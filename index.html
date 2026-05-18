@@ -15,13 +15,19 @@ body{margin:0;background:#f3f4f6;color:#111827;font-family:"Segoe UI","Malgun Go
 .card{background:#fff;margin:14px;border:1px solid #e5e7eb;border-radius:26px;box-shadow:0 8px 22px rgba(0,0,0,.08);overflow:hidden}
 .pad{padding:18px}
 .step{display:flex;align-items:center;gap:10px;margin-bottom:12px}
-.num{width:34px;height:34px;border-radius:999px;background:#2563eb;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}
+.num{width:36px;height:36px;border-radius:999px;background:#2563eb;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:18px}
 h2{font-size:20px;margin:0;font-weight:900;letter-spacing:-.03em}
 .desc{font-size:14px;color:#6b7280;line-height:1.45;margin-top:6px}
 button,select,input{width:100%;padding:17px;margin-top:10px;border-radius:20px;border:1px solid #d1d5db;font-size:18px;font-weight:800}
 button{background:#2563eb;color:#fff;border:none}
 button.gray{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}
 button.green{background:#16a34a}
+button:disabled{background:#9ca3af;color:#fff}
+.steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
+.stepMini{background:#f9fafb;border:1px solid #e5e7eb;border-radius:18px;padding:10px;text-align:center}
+.stepMini b{display:block;font-size:18px}
+.stepMini span{display:block;font-size:12px;color:#6b7280;margin-top:4px}
+.ok{border-color:#86efac;background:#f0fdf4}
 .nearest{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:20px;padding:16px;margin-top:10px}
 .nearestName{font-size:26px;font-weight:900;letter-spacing:-.04em}
 .nearestSub{font-size:14px;margin-top:6px;color:#4b5563}
@@ -42,12 +48,26 @@ button.green{background:#16a34a}
 <header class="top">
 <div class="title">☰ 하천 DEM 분석 시스템</div>
 <div class="location" id="topLocation">현재 위치 : GPS 권한 대기 중</div>
+<div class="steps">
+ <div class="stepMini" id="s1"><b>1</b><span>API Key</span></div>
+ <div class="stepMini" id="s2"><b>2</b><span>현재 위치</span></div>
+ <div class="stepMini" id="s3"><b>3</b><span>강 선택</span></div>
+</div>
 </header>
 
 <section class="card">
 <div class="pad">
-<div class="step"><div class="num">1</div><h2>현재 위치 확인</h2></div>
-<div class="desc">갤럭시에서 GPS 권한을 허용하면 현재 위치와 가장 가까운 강을 계산합니다.</div>
+<div class="step"><div class="num">1</div><h2>VWorld API Key</h2></div>
+<div class="desc">먼저 API Key를 입력하면 이후 GPS/강 선택 시 지도가 바로 표시됩니다.</div>
+<input id="key" placeholder="VWorld API Key" oninput="saveKey()">
+<button onclick="prepareMap()">API Key 적용 / 지도 준비</button>
+</div>
+</section>
+
+<section class="card">
+<div class="pad">
+<div class="step"><div class="num">2</div><h2>현재 위치 확인</h2></div>
+<div class="desc">GPS 권한을 허용하면 현재 위치와 가장 가까운 강을 계산합니다.</div>
 <button class="green" onclick="requestGPS()">현재 위치 권한 허용</button>
 <div class="nearest" id="nearestBox">
 <div class="nearestName">대기 중</div>
@@ -59,26 +79,11 @@ button.green{background:#16a34a}
 
 <section class="card">
 <div class="pad">
-<div class="step"><div class="num">2</div><h2>지역 선택</h2></div>
+<div class="step"><div class="num">3</div><h2>지역 / 강 선택</h2></div>
 <select id="regionSelect" onchange="renderRiverSelect()"></select>
-</div>
-</section>
-
-<section class="card">
-<div class="pad">
-<div class="step"><div class="num">3</div><h2>강 선택</h2></div>
 <select id="riverSelect" onchange="previewRiver()"></select>
 <div class="desc" id="riverPreview">강을 선택하면 위치가 준비됩니다.</div>
 <button class="gray" onclick="moveSelectedRiver()">선택한 강으로 이동</button>
-</div>
-</section>
-
-<section class="card">
-<div class="pad">
-<div class="step"><div class="num">4</div><h2>VWorld API Key</h2></div>
-<input id="key" placeholder="VWorld API Key">
-<button onclick="startMap()">지도 시작</button>
-<div class="desc">VWorld는 실시간 배경지도 표시용입니다.</div>
 </div>
 </section>
 
@@ -178,9 +183,14 @@ const rivers={
  ]
 };
 
-let map,marker,currentGPS=null,nearestRiver=null;
+let map,marker,currentGPS=null,nearestRiver=null,vworldKey="";
 
 function init(){
+ const saved=localStorage.getItem("vworld_key")||"";
+ document.getElementById("key").value=saved;
+ vworldKey=saved;
+ if(saved) markStep(1,true);
+
  const region=document.getElementById("regionSelect");
  Object.keys(rivers).forEach(k=>{
   const o=document.createElement("option");
@@ -189,15 +199,52 @@ function init(){
  renderRiverSelect();
 }
 
+function saveKey(){
+ vworldKey=document.getElementById("key").value.trim();
+ localStorage.setItem("vworld_key",vworldKey);
+ markStep(1,!!vworldKey);
+}
+
+function markStep(n,ok){
+ const el=document.getElementById("s"+n);
+ if(ok) el.classList.add("ok"); else el.classList.remove("ok");
+}
+
+function prepareMap(){
+ saveKey();
+ if(!vworldKey){alert("VWorld API Key를 먼저 입력하세요.");return;}
+ const r=selectedRiver();
+ ensureMap(r);
+}
+
+function ensureMap(target){
+ if(!vworldKey){alert("먼저 VWorld API Key를 입력하세요.");return false;}
+ showMap();
+ if(!map){
+  map=L.map("map",{zoomControl:false}).setView([target.lat,target.lon],target.zoom||13);
+  L.tileLayer("https://api.vworld.kr/req/wmts/1.0.0/"+vworldKey+"/Base/{z}/{y}/{x}.png",{maxZoom:19,attribution:"VWorld"}).addTo(map);
+  marker=L.marker([target.lat,target.lon]).addTo(map);
+  map.on("click",e=>{marker.setLatLng(e.latlng);updateResult(e.latlng,"지도 터치 위치")});
+ }else{
+  map.setView([target.lat,target.lon],target.zoom||13);
+  marker.setLatLng([target.lat,target.lon]);
+ }
+ setTimeout(()=>map.invalidateSize(),300);
+ return true;
+}
+
+function showMap(){
+ document.getElementById("mapCard").style.display="block";
+ document.getElementById("resultCard").style.display="block";
+}
+
 function renderRiverSelect(){
  const reg=document.getElementById("regionSelect").value;
  const sel=document.getElementById("riverSelect");
  sel.innerHTML="";
  rivers[reg].forEach((r,i)=>{
   const o=document.createElement("option");
-  o.value=i;
-  o.textContent=r.name;
-  sel.appendChild(o);
+  o.value=i;o.textContent=r.name;sel.appendChild(o);
  });
  previewRiver();
 }
@@ -214,21 +261,20 @@ function previewRiver(){
 }
 
 function requestGPS(){
- if(!navigator.geolocation){
-  alert("이 브라우저는 GPS를 지원하지 않습니다.");
-  return;
- }
+ saveKey();
+ if(!navigator.geolocation){alert("이 브라우저는 GPS를 지원하지 않습니다.");return;}
  document.getElementById("topLocation").innerText="현재 위치 : GPS 확인 중...";
  navigator.geolocation.getCurrentPosition(pos=>{
-  currentGPS={lat:pos.coords.latitude,lon:pos.coords.longitude};
+  currentGPS={lat:pos.coords.latitude,lon:pos.coords.longitude,zoom:14,name:"현재 GPS 위치"};
+  markStep(2,true);
   document.getElementById("topLocation").innerText=`현재 위치 : GPS (${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)})`;
   nearestRiver=findNearest(currentGPS.lat,currentGPS.lon);
   document.querySelector("#nearestBox .nearestName").innerText=nearestRiver.name;
   document.querySelector("#nearestBox .nearestSub").innerText=`거리 약 ${nearestRiver.distance.toFixed(1)} km / 배경지도 이동용`;
 
-  if(map){
-   map.setView([currentGPS.lat,currentGPS.lon],14);
-   if(marker) marker.setLatLng([currentGPS.lat,currentGPS.lon]);
+  if(vworldKey){
+   ensureMap(currentGPS);
+   updateResult({lat:currentGPS.lat,lng:currentGPS.lon},"현재 GPS 위치");
   }
  },err=>{
   document.getElementById("topLocation").innerText="현재 위치 : GPS 권한 거부 또는 실패";
@@ -259,24 +305,9 @@ function distKm(lat1,lon1,lat2,lon2){
  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-function startMap(){
- const key=document.getElementById("key").value.trim();
- if(!key){alert("VWorld API Key를 입력하세요.");return;}
- if(map){showMap();return;}
- const r=selectedRiver();
- map=L.map("map",{zoomControl:false}).setView([r.lat,r.lon],r.zoom);
- L.tileLayer("https://api.vworld.kr/req/wmts/1.0.0/"+key+"/Base/{z}/{y}/{x}.png",{maxZoom:19,attribution:"VWorld"}).addTo(map);
- marker=L.marker([r.lat,r.lon]).addTo(map);
- map.on("click",e=>{marker.setLatLng(e.latlng);updateResult(e.latlng,"지도 터치 위치")});
- showMap();
- updateResult({lat:r.lat,lng:r.lon},r.name);
- setTimeout(()=>map.invalidateSize(),300);
-}
-
-function showMap(){
- document.getElementById("mapCard").style.display="block";
- document.getElementById("resultCard").style.display="block";
- setTimeout(()=>{if(map)map.invalidateSize()},300);
+function moveNearest(){
+ if(!nearestRiver){alert("먼저 GPS 권한을 허용하세요.");return;}
+ moveToRiver(nearestRiver);
 }
 
 function moveSelectedRiver(){
@@ -284,16 +315,10 @@ function moveSelectedRiver(){
  moveToRiver(r);
 }
 
-function moveNearest(){
- if(!nearestRiver){alert("먼저 GPS 권한을 허용하세요.");return;}
- moveToRiver(nearestRiver);
-}
-
 function moveToRiver(r){
- if(!map){alert("먼저 지도를 시작하세요.");return;}
- showMap();
- map.setView([r.lat,r.lon],r.zoom||13);
- marker.setLatLng([r.lat,r.lon]);
+ saveKey();
+ if(!ensureMap(r)) return;
+ markStep(3,true);
  updateResult({lat:r.lat,lng:r.lon},r.name);
 }
 
