@@ -4,53 +4,320 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>하천 DEM 분석 시스템</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-body{
-margin:0;
-font-family:Segoe UI,Malgun Gothic,sans-serif;
-background:#f3f4f6;
-color:#111827;
-display:flex;
-align-items:center;
-justify-content:center;
-min-height:100vh;
-}
-.card{
-background:white;
-padding:40px;
-border-radius:24px;
-box-shadow:0 10px 30px rgba(0,0,0,.1);
-max-width:500px;
-width:90%;
-}
-h1{
-font-size:34px;
-margin:0 0 10px 0;
-}
-p{
-font-size:18px;
-line-height:1.6;
-color:#4b5563;
-}
-button{
-margin-top:20px;
-width:100%;
-padding:18px;
-font-size:20px;
-font-weight:800;
-border:none;
-border-radius:18px;
-background:#2563eb;
-color:white;
-}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#f3f4f6;color:#111827;font-family:"Segoe UI","Malgun Gothic","Noto Sans KR",sans-serif}
+.app{max-width:540px;margin:0 auto;min-height:100vh;padding-bottom:18px}
+.top{position:sticky;top:0;z-index:999;background:rgba(243,244,246,.96);backdrop-filter:blur(14px);border-bottom:1px solid #e5e7eb;padding:16px}
+.title{font-size:24px;font-weight:900;letter-spacing:-.04em}
+.location{margin-top:8px;font-size:16px;color:#4b5563;font-weight:700;line-height:1.45}
+.card{background:#fff;margin:14px;border:1px solid #e5e7eb;border-radius:26px;box-shadow:0 8px 22px rgba(0,0,0,.08);overflow:hidden}
+.pad{padding:18px}
+.step{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.num{width:34px;height:34px;border-radius:999px;background:#2563eb;color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center}
+h2{font-size:20px;margin:0;font-weight:900;letter-spacing:-.03em}
+.desc{font-size:14px;color:#6b7280;line-height:1.45;margin-top:6px}
+button,select,input{width:100%;padding:17px;margin-top:10px;border-radius:20px;border:1px solid #d1d5db;font-size:18px;font-weight:800}
+button{background:#2563eb;color:#fff;border:none}
+button.gray{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}
+button.green{background:#16a34a}
+.nearest{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:20px;padding:16px;margin-top:10px}
+.nearestName{font-size:26px;font-weight:900;letter-spacing:-.04em}
+.nearestSub{font-size:14px;margin-top:6px;color:#4b5563}
+#mapCard{display:none}
+#resultCard{display:none}
+#map{height:55vh;min-height:390px;border-radius:24px;border:1px solid #e5e7eb;overflow:hidden;background:#dbeafe}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.resultBox{background:#f9fafb;border:1px solid #e5e7eb;border-radius:22px;padding:16px}
+.label{font-size:15px;color:#6b7280;font-weight:800}
+.value{font-size:32px;font-weight:900;margin-top:8px;letter-spacing:-.04em}
+.state{font-size:24px;font-weight:900;margin-top:8px}
+.log{margin-top:12px;background:#111827;color:#4ade80;border-radius:22px;padding:15px;font-family:Consolas,monospace;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.warn{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:18px;padding:13px;font-size:14px;line-height:1.5}
 </style>
 </head>
 <body>
-<div class="card">
-<h1>하천 DEM 분석 시스템</h1>
-<p>GitHub Pages HTTPS 테스트 성공.</p>
-<p>이제 GPS / 모바일 UI / VWorld 연동을 진행할 수 있습니다.</p>
-<button>모바일 웹앱 준비 완료</button>
+<div class="app">
+<header class="top">
+<div class="title">☰ 하천 DEM 분석 시스템</div>
+<div class="location" id="topLocation">현재 위치 : GPS 권한 대기 중</div>
+</header>
+
+<section class="card">
+<div class="pad">
+<div class="step"><div class="num">1</div><h2>현재 위치 확인</h2></div>
+<div class="desc">갤럭시에서 GPS 권한을 허용하면 현재 위치와 가장 가까운 강을 계산합니다.</div>
+<button class="green" onclick="requestGPS()">현재 위치 권한 허용</button>
+<div class="nearest" id="nearestBox">
+<div class="nearestName">대기 중</div>
+<div class="nearestSub">GPS 권한 허용 후 자동 계산됩니다.</div>
 </div>
+<button class="gray" onclick="moveNearest()">가장 가까운 강으로 이동</button>
+</div>
+</section>
+
+<section class="card">
+<div class="pad">
+<div class="step"><div class="num">2</div><h2>지역 선택</h2></div>
+<select id="regionSelect" onchange="renderRiverSelect()"></select>
+</div>
+</section>
+
+<section class="card">
+<div class="pad">
+<div class="step"><div class="num">3</div><h2>강 선택</h2></div>
+<select id="riverSelect" onchange="previewRiver()"></select>
+<div class="desc" id="riverPreview">강을 선택하면 위치가 준비됩니다.</div>
+<button class="gray" onclick="moveSelectedRiver()">선택한 강으로 이동</button>
+</div>
+</section>
+
+<section class="card">
+<div class="pad">
+<div class="step"><div class="num">4</div><h2>VWorld API Key</h2></div>
+<input id="key" placeholder="VWorld API Key">
+<button onclick="startMap()">지도 시작</button>
+<div class="desc">VWorld는 실시간 배경지도 표시용입니다.</div>
+</div>
+</section>
+
+<section class="card" id="mapCard">
+<div class="pad">
+<h2>지도</h2>
+<div id="map" style="margin-top:12px"></div>
+</div>
+</section>
+
+<section class="card" id="resultCard">
+<div class="pad">
+<h2>선택 후 결과</h2>
+<div class="grid">
+<div class="resultBox">
+<div class="label">현재 높이</div>
+<div class="value" id="heightText">-</div>
+</div>
+<div class="resultBox">
+<div class="label">현재 상태</div>
+<div class="state" id="stateText">-</div>
+</div>
+</div>
+<div class="resultBox" style="margin-top:12px">
+<div class="label">강 이름</div>
+<div class="state" id="riverName">-</div>
+</div>
+<div class="log" id="result">강을 선택하거나 지도를 터치하면 결과가 표시됩니다.</div>
+</div>
+</section>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const rivers={
+ "전국 주요":[
+  {name:"한강",lat:37.526,lon:126.934,zoom:13},
+  {name:"낙동강",lat:35.848,lon:128.520,zoom:12},
+  {name:"금강",lat:36.470,lon:127.080,zoom:12},
+  {name:"영산강",lat:35.017,lon:126.744,zoom:12},
+  {name:"섬진강",lat:35.163,lon:127.741,zoom:12}
+ ],
+ "전남/광주":[
+  {name:"영산강",lat:35.017,lon:126.744,zoom:12},
+  {name:"섬진강",lat:35.163,lon:127.741,zoom:12},
+  {name:"보성강",lat:35.079,lon:127.374,zoom:12},
+  {name:"황룡강",lat:35.167,lon:126.780,zoom:13},
+  {name:"지석천",lat:35.035,lon:126.922,zoom:13},
+  {name:"탐진강",lat:34.642,lon:126.772,zoom:12}
+ ],
+ "전북":[
+  {name:"만경강",lat:35.891,lon:127.066,zoom:12},
+  {name:"동진강",lat:35.714,lon:126.872,zoom:12},
+  {name:"섬진강",lat:35.432,lon:127.385,zoom:12},
+  {name:"요천",lat:35.409,lon:127.387,zoom:13},
+  {name:"전주천",lat:35.821,lon:127.148,zoom:13}
+ ],
+ "충남/대전/세종":[
+  {name:"금강",lat:36.470,lon:127.080,zoom:12},
+  {name:"갑천",lat:36.350,lon:127.384,zoom:13},
+  {name:"유등천",lat:36.322,lon:127.405,zoom:13},
+  {name:"논산천",lat:36.187,lon:127.098,zoom:13},
+  {name:"미호강",lat:36.502,lon:127.272,zoom:12}
+ ],
+ "경북/대구":[
+  {name:"낙동강",lat:36.120,lon:128.350,zoom:12},
+  {name:"금호강",lat:35.887,lon:128.610,zoom:13},
+  {name:"형산강",lat:35.988,lon:129.370,zoom:12},
+  {name:"감천",lat:36.119,lon:128.118,zoom:13},
+  {name:"내성천",lat:36.641,lon:128.624,zoom:12}
+ ],
+ "경남/부산/울산":[
+  {name:"낙동강",lat:35.206,lon:128.954,zoom:12},
+  {name:"남강",lat:35.180,lon:128.092,zoom:12},
+  {name:"밀양강",lat:35.491,lon:128.747,zoom:13},
+  {name:"황강",lat:35.566,lon:128.160,zoom:12},
+  {name:"태화강",lat:35.544,lon:129.320,zoom:13}
+ ],
+ "서울/경기":[
+  {name:"한강",lat:37.526,lon:126.934,zoom:13},
+  {name:"임진강",lat:37.891,lon:126.744,zoom:12},
+  {name:"안양천",lat:37.516,lon:126.885,zoom:13},
+  {name:"중랑천",lat:37.578,lon:127.055,zoom:13},
+  {name:"탄천",lat:37.392,lon:127.112,zoom:13}
+ ],
+ "강원":[
+  {name:"북한강",lat:37.894,lon:127.727,zoom:12},
+  {name:"남한강",lat:37.271,lon:127.697,zoom:12},
+  {name:"소양강",lat:37.905,lon:127.735,zoom:13},
+  {name:"홍천강",lat:37.691,lon:127.884,zoom:12},
+  {name:"삼척오십천",lat:37.446,lon:129.165,zoom:13}
+ ],
+ "제주":[
+  {name:"천미천",lat:33.406,lon:126.774,zoom:13},
+  {name:"산지천",lat:33.515,lon:126.526,zoom:14},
+  {name:"효돈천",lat:33.267,lon:126.617,zoom:13}
+ ]
+};
+
+let map,marker,currentGPS=null,nearestRiver=null;
+
+function init(){
+ const region=document.getElementById("regionSelect");
+ Object.keys(rivers).forEach(k=>{
+  const o=document.createElement("option");
+  o.value=k;o.textContent=k;region.appendChild(o);
+ });
+ renderRiverSelect();
+}
+
+function renderRiverSelect(){
+ const reg=document.getElementById("regionSelect").value;
+ const sel=document.getElementById("riverSelect");
+ sel.innerHTML="";
+ rivers[reg].forEach((r,i)=>{
+  const o=document.createElement("option");
+  o.value=i;
+  o.textContent=r.name;
+  sel.appendChild(o);
+ });
+ previewRiver();
+}
+
+function selectedRiver(){
+ const reg=document.getElementById("regionSelect").value;
+ const i=parseInt(document.getElementById("riverSelect").value||"0");
+ return rivers[reg][i];
+}
+
+function previewRiver(){
+ const r=selectedRiver();
+ document.getElementById("riverPreview").innerText=`선택됨 : ${r.name} / 위도 ${r.lat}, 경도 ${r.lon}`;
+}
+
+function requestGPS(){
+ if(!navigator.geolocation){
+  alert("이 브라우저는 GPS를 지원하지 않습니다.");
+  return;
+ }
+ document.getElementById("topLocation").innerText="현재 위치 : GPS 확인 중...";
+ navigator.geolocation.getCurrentPosition(pos=>{
+  currentGPS={lat:pos.coords.latitude,lon:pos.coords.longitude};
+  document.getElementById("topLocation").innerText=`현재 위치 : GPS (${currentGPS.lat.toFixed(5)}, ${currentGPS.lon.toFixed(5)})`;
+  nearestRiver=findNearest(currentGPS.lat,currentGPS.lon);
+  document.querySelector("#nearestBox .nearestName").innerText=nearestRiver.name;
+  document.querySelector("#nearestBox .nearestSub").innerText=`거리 약 ${nearestRiver.distance.toFixed(1)} km / 배경지도 이동용`;
+
+  if(map){
+   map.setView([currentGPS.lat,currentGPS.lon],14);
+   if(marker) marker.setLatLng([currentGPS.lat,currentGPS.lon]);
+  }
+ },err=>{
+  document.getElementById("topLocation").innerText="현재 위치 : GPS 권한 거부 또는 실패";
+  alert("GPS 권한 실패 : "+err.message);
+ },{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+}
+
+function allRivers(){
+ let arr=[];
+ Object.keys(rivers).forEach(k=>rivers[k].forEach(r=>arr.push(r)));
+ return arr;
+}
+
+function findNearest(lat,lon){
+ let best=null;
+ allRivers().forEach(r=>{
+  const d=distKm(lat,lon,r.lat,r.lon);
+  if(!best||d<best.distance) best={...r,distance:d};
+ });
+ return best;
+}
+
+function distKm(lat1,lon1,lat2,lon2){
+ const R=6371;
+ const dLat=(lat2-lat1)*Math.PI/180;
+ const dLon=(lon2-lon1)*Math.PI/180;
+ const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+ return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function startMap(){
+ const key=document.getElementById("key").value.trim();
+ if(!key){alert("VWorld API Key를 입력하세요.");return;}
+ if(map){showMap();return;}
+ const r=selectedRiver();
+ map=L.map("map",{zoomControl:false}).setView([r.lat,r.lon],r.zoom);
+ L.tileLayer("https://api.vworld.kr/req/wmts/1.0.0/"+key+"/Base/{z}/{y}/{x}.png",{maxZoom:19,attribution:"VWorld"}).addTo(map);
+ marker=L.marker([r.lat,r.lon]).addTo(map);
+ map.on("click",e=>{marker.setLatLng(e.latlng);updateResult(e.latlng,"지도 터치 위치")});
+ showMap();
+ updateResult({lat:r.lat,lng:r.lon},r.name);
+ setTimeout(()=>map.invalidateSize(),300);
+}
+
+function showMap(){
+ document.getElementById("mapCard").style.display="block";
+ document.getElementById("resultCard").style.display="block";
+ setTimeout(()=>{if(map)map.invalidateSize()},300);
+}
+
+function moveSelectedRiver(){
+ const r=selectedRiver();
+ moveToRiver(r);
+}
+
+function moveNearest(){
+ if(!nearestRiver){alert("먼저 GPS 권한을 허용하세요.");return;}
+ moveToRiver(nearestRiver);
+}
+
+function moveToRiver(r){
+ if(!map){alert("먼저 지도를 시작하세요.");return;}
+ showMap();
+ map.setView([r.lat,r.lon],r.zoom||13);
+ marker.setLatLng([r.lat,r.lon]);
+ updateResult({lat:r.lat,lng:r.lon},r.name);
+}
+
+function updateResult(latlng,name){
+ const z=(Math.abs(Math.sin((latlng.lat+latlng.lng)*1000))*10).toFixed(1);
+ let state="교량 구간";
+ if(z<=2.5) state="둔치 구간";
+ if(z<=0.3) state="수면 구간";
+ if(z>2.5&&z<=7.0) state="제방 구간";
+ document.getElementById("heightText").innerText=z+"m";
+ document.getElementById("stateText").innerText=state;
+ document.getElementById("riverName").innerText=name;
+ document.getElementById("result").innerText=`위치 = ${name}
+위도 = ${latlng.lat.toFixed(7)}
+경도 = ${latlng.lng.toFixed(7)}
+
+현재 높이 = ${z}m
+현재 상태 = ${state}
+
+주의:
+모바일 HTTPS GPS 테스트용 샘플 높이입니다.`;
+}
+
+init();
+</script>
 </body>
 </html>
