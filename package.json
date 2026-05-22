@@ -1,0 +1,27 @@
+{
+  "name": "riverdem",
+  "version": "0.1.0",
+  "description": "하천 DEM 분석 시스템",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "kr.riverdem.app",
+    "productName": "하천 DEM 분석 시스템",
+    "files": [
+      "index.html",
+      "main.js",
+      "manifest.webmanifest",
+      "sw.js"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}
