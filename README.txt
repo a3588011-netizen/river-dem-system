@@ -1,8 +1,11 @@
-# 하천 DEM 분석 시스템
+하천 DEM 분석 시스템 - row floor 수정 버전
 
-깔끔한 시작 화면 버전.
+수정:
+- row flip 제거
+- row = floor(rawRow)
+- col = floor(rawCol)
+- DEM 범위 밖 좌표는 고도 표시 금지
 
-흐름:
-1. API Key 입력
-2. 지도 위치 선택
-3. 강/GPS 이동 후 지도 표시
+실행:
+- GitHub Pages HTTPS 권장
+- 모바일 GPS는 HTTPS 필요

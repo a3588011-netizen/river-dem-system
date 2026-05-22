@@ -8,7 +8,7 @@
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#f3f4f6;color:#111827;font-family:"Segoe UI","Malgun Gothic","Noto Sans KR",sans-serif}
-.app{max-width:540px;margin:0 auto;min-height:100vh;padding-bottom:18px}
+.app{max-width:560px;margin:0 auto;min-height:100vh;padding-bottom:18px}
 .top{position:sticky;top:0;z-index:999;background:rgba(243,244,246,.96);backdrop-filter:blur(14px);border-bottom:1px solid #e5e7eb;padding:18px}
 .title{font-size:25px;font-weight:900;letter-spacing:-.04em}
 .location{margin-top:8px;font-size:16px;color:#4b5563;font-weight:700;line-height:1.45}
@@ -16,12 +16,11 @@ body{margin:0;background:#f3f4f6;color:#111827;font-family:"Segoe UI","Malgun Go
 .pad{padding:20px}
 h2{font-size:22px;margin:0;font-weight:900;letter-spacing:-.04em}
 .desc{font-size:15px;color:#6b7280;line-height:1.55;margin-top:8px}
-button,select,input{width:100%;padding:18px;margin-top:12px;border-radius:22px;border:1px solid #d1d5db;font-size:19px;font-weight:800}
+button,select,input{width:100%;padding:18px;margin-top:12px;border-radius:22px;border:1px solid #d1d5db;font-size:18px;font-weight:800}
 button{background:#2563eb;color:#fff;border:none}
 button.gray{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}
 button.green{background:#16a34a}
 .hidden{display:none}
-.hero{padding:28px 20px 24px}
 .heroIcon{width:58px;height:58px;border-radius:18px;background:#dbeafe;color:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:900;margin-bottom:18px}
 .modeBox{background:#eff6ff;color:#1e3a8a;border:1px solid #bfdbfe;border-radius:22px;padding:16px;margin-top:12px}
 .modeTitle{font-size:24px;font-weight:900;letter-spacing:-.04em}
@@ -31,8 +30,9 @@ button.green{background:#16a34a}
 .label{font-size:15px;color:#6b7280;font-weight:800}
 .value{font-size:34px;font-weight:900;margin-top:8px;letter-spacing:-.04em}
 .state{font-size:24px;font-weight:900;margin-top:8px}
-.log{margin-top:12px;background:#111827;color:#4ade80;border-radius:22px;padding:15px;font-family:Consolas,monospace;font-size:14px;line-height:1.6;white-space:pre-wrap}
+.log{margin-top:12px;background:#111827;color:#4ade80;border-radius:22px;padding:15px;font-family:Consolas,monospace;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow:auto}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.warn{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:18px;padding:13px;font-size:14px;line-height:1.5;margin-top:12px}
 </style>
 </head>
 <body>
@@ -42,16 +42,20 @@ button.green{background:#16a34a}
 <div class="location" id="topLocation">현재 위치 : 대기 중</div>
 </header>
 
-<section class="card" id="apiScreen">
-<div class="hero">
+<section class="card" id="startScreen">
+<div class="pad">
 <div class="heroIcon">1</div>
-<h2>VWorld API Key 입력</h2>
-<div class="desc">
-배경지도를 불러오기 위해 먼저 API Key를 입력합니다.<br>
-입력 후 지도 선택 화면으로 이동합니다.
-</div>
+<h2>시작 준비</h2>
+<div class="desc">VWorld API Key와 GeoTIFF DEM을 먼저 준비합니다.</div>
 <input id="key" placeholder="VWorld API Key">
-<button onclick="applyKey()">다음으로</button>
+<input type="file" id="demFile" accept=".tif,.tiff">
+<button onclick="prepare()">API Key / DEM 적용</button>
+<div class="warn">
+수정사항: row flip 제거.<br>
+현재 적용식: row = floor(rawRow), col = floor(rawCol)<br>
+DEM 범위 밖이면 고도 표시 안 함.
+</div>
+<div class="log" id="demInfo">DEM 대기 중</div>
 </div>
 </section>
 
@@ -79,34 +83,41 @@ button.green{background:#16a34a}
 <section class="card hidden" id="mapCard">
 <div class="pad">
 <h2>지도</h2>
+<div class="desc">지도를 터치하면 해당 위치의 실제 DEM 고도를 읽습니다.</div>
 <div id="map" style="margin-top:12px"></div>
 </div>
 </section>
 
 <section class="card hidden" id="resultCard">
 <div class="pad">
-<h2>결과</h2>
+<h2>DEM 결과</h2>
 <div class="grid">
 <div class="resultBox">
-<div class="label">현재 높이</div>
+<div class="label">DEM 고도</div>
 <div class="value" id="heightText">-</div>
 </div>
 <div class="resultBox">
-<div class="label">현재 상태</div>
-<div class="state" id="stateText">-</div>
+<div class="label">드론 상대고도</div>
+<div class="state" id="droneRelText">-</div>
 </div>
 </div>
 <div class="resultBox">
-<div class="label">강 이름</div>
-<div class="state" id="riverName">-</div>
+<div class="label">위치 이름</div>
+<div class="state" id="placeName">-</div>
 </div>
-<div class="log" id="result">강을 선택하거나 지도를 터치하면 결과가 표시됩니다.</div>
+<div class="log" id="result">지도 클릭 또는 GPS 위치를 사용하세요.</div>
 </div>
 </section>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
 <script>
+proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
+
+const DRONE_AGL = 100;
+
 const rivers={
  "전국 주요":[
   {name:"한강",lat:37.526,lon:126.934,zoom:13},
@@ -123,56 +134,26 @@ const rivers={
   {name:"지석천",lat:35.035,lon:126.922,zoom:13},
   {name:"탐진강",lat:34.642,lon:126.772,zoom:12}
  ],
+ "경남/부산/울산":[
+  {name:"낙동강",lat:35.206,lon:128.954,zoom:12},
+  {name:"남강",lat:35.180,lon:128.092,zoom:12},
+  {name:"밀양강",lat:35.491,lon:128.747,zoom:13},
+  {name:"황강",lat:35.566,lon:128.160,zoom:12},
+  {name:"태화강",lat:35.544,lon:129.320,zoom:13},
+  {name:"화개 섬진강",lat:35.186645,lon:127.622747,zoom:14}
+ ],
  "전북":[
   {name:"만경강",lat:35.891,lon:127.066,zoom:12},
   {name:"동진강",lat:35.714,lon:126.872,zoom:12},
   {name:"섬진강",lat:35.432,lon:127.385,zoom:12},
   {name:"요천",lat:35.409,lon:127.387,zoom:13},
   {name:"전주천",lat:35.821,lon:127.148,zoom:13}
- ],
- "충남/대전/세종":[
-  {name:"금강",lat:36.470,lon:127.080,zoom:12},
-  {name:"갑천",lat:36.350,lon:127.384,zoom:13},
-  {name:"유등천",lat:36.322,lon:127.405,zoom:13},
-  {name:"논산천",lat:36.187,lon:127.098,zoom:13},
-  {name:"미호강",lat:36.502,lon:127.272,zoom:12}
- ],
- "경북/대구":[
-  {name:"낙동강",lat:36.120,lon:128.350,zoom:12},
-  {name:"금호강",lat:35.887,lon:128.610,zoom:13},
-  {name:"형산강",lat:35.988,lon:129.370,zoom:12},
-  {name:"감천",lat:36.119,lon:128.118,zoom:13},
-  {name:"내성천",lat:36.641,lon:128.624,zoom:12}
- ],
- "경남/부산/울산":[
-  {name:"낙동강",lat:35.206,lon:128.954,zoom:12},
-  {name:"남강",lat:35.180,lon:128.092,zoom:12},
-  {name:"밀양강",lat:35.491,lon:128.747,zoom:13},
-  {name:"황강",lat:35.566,lon:128.160,zoom:12},
-  {name:"태화강",lat:35.544,lon:129.320,zoom:13}
- ],
- "서울/경기":[
-  {name:"한강",lat:37.526,lon:126.934,zoom:13},
-  {name:"임진강",lat:37.891,lon:126.744,zoom:12},
-  {name:"안양천",lat:37.516,lon:126.885,zoom:13},
-  {name:"중랑천",lat:37.578,lon:127.055,zoom:13},
-  {name:"탄천",lat:37.392,lon:127.112,zoom:13}
- ],
- "강원":[
-  {name:"북한강",lat:37.894,lon:127.727,zoom:12},
-  {name:"남한강",lat:37.271,lon:127.697,zoom:12},
-  {name:"소양강",lat:37.905,lon:127.735,zoom:13},
-  {name:"홍천강",lat:37.691,lon:127.884,zoom:12},
-  {name:"삼척오십천",lat:37.446,lon:129.165,zoom:13}
- ],
- "제주":[
-  {name:"천미천",lat:33.406,lon:126.774,zoom:13},
-  {name:"산지천",lat:33.515,lon:126.526,zoom:14},
-  {name:"효돈천",lat:33.267,lon:126.617,zoom:13}
  ]
 };
 
 let map,marker,vworldKey="",nearestRiver=null,currentGPS=null;
+let demRaster=null,demWidth=0,demHeight=0,originX=0,originY=0,pixelX=0,pixelY=0;
+let demMinX=0,demMaxX=0,demMinY=0,demMaxY=0;
 
 function init(){
  const saved=localStorage.getItem("vworld_key")||"";
@@ -184,15 +165,72 @@ function init(){
  });
  renderRiverSelect();
 }
+init();
 
-function applyKey(){
- const key=document.getElementById("key").value.trim();
- if(!key){alert("VWorld API Key를 입력하세요.");return;}
- vworldKey=key;
- localStorage.setItem("vworld_key",key);
- document.getElementById("apiScreen").classList.add("hidden");
- document.getElementById("selectScreen").classList.remove("hidden");
- window.scrollTo({top:0,behavior:"smooth"});
+async function prepare(){
+ vworldKey=document.getElementById("key").value.trim();
+ if(!vworldKey){alert("VWorld API Key를 입력하세요.");return;}
+ localStorage.setItem("vworld_key",vworldKey);
+
+ const file=document.getElementById("demFile").files[0];
+ if(!file){alert("GeoTIFF DEM 파일을 선택하세요.");return;}
+
+ try{
+  document.getElementById("demInfo").innerText="DEM 로드 중...";
+  const buf=await file.arrayBuffer();
+  const tiff=await GeoTIFF.fromArrayBuffer(buf);
+  const img=await tiff.getImage();
+
+  demWidth=img.getWidth();
+  demHeight=img.getHeight();
+
+  const tie=img.getTiePoints();
+  const scale=img.getFileDirectory().ModelPixelScale;
+
+  if(!tie || tie.length===0 || !scale){
+   document.getElementById("demInfo").innerText="DEM 좌표 태그를 읽지 못했습니다.";
+   return;
+  }
+
+  originX=tie[0].x;
+  originY=tie[0].y;
+  pixelX=scale[0];
+  pixelY=-scale[1];
+
+  demMinX = Math.min(originX, originX + pixelX * demWidth);
+  demMaxX = Math.max(originX, originX + pixelX * demWidth);
+  demMinY = Math.min(originY, originY + pixelY * demHeight);
+  demMaxY = Math.max(originY, originY + pixelY * demHeight);
+
+  const rs=await img.readRasters({samples:[0]});
+  demRaster=rs[0];
+
+  document.getElementById("demInfo").innerText=
+`DEM 로드 성공
+파일 = ${file.name}
+크기 = ${demWidth} x ${demHeight}
+
+originX = ${originX}
+originY = ${originY}
+pixelX = ${pixelX}
+pixelY = ${pixelY}
+
+DEM 범위:
+X = ${demMinX} ~ ${demMaxX}
+Y = ${demMinY} ~ ${demMaxY}
+
+현재 계산식:
+rawRow = (originY - y) / abs(pixelY)
+rawCol = (x - originX) / pixelX
+row = floor(rawRow)
+col = floor(rawCol)`;
+
+  document.getElementById("startScreen").classList.add("hidden");
+  document.getElementById("selectScreen").classList.remove("hidden");
+  window.scrollTo({top:0,behavior:"smooth"});
+ }catch(e){
+  document.getElementById("demInfo").innerText="DEM 로드 실패: "+e;
+ }
 }
 
 function renderRiverSelect(){
@@ -226,6 +264,8 @@ function requestGPS(){
   nearestRiver=findNearest(currentGPS.lat,currentGPS.lon);
   document.querySelector("#nearestBox .modeTitle").innerText=nearestRiver.name;
   document.querySelector("#nearestBox .modeSub").innerText=`거리 약 ${nearestRiver.distance.toFixed(1)} km / 배경지도 이동용`;
+  ensureMap(currentGPS);
+  updateDemAt(currentGPS.lat,currentGPS.lon,"현재 GPS 위치");
  },err=>{
   document.getElementById("topLocation").innerText="현재 위치 : GPS 권한 거부 또는 실패";
   alert("GPS 권한 실패 : "+err.message);
@@ -271,7 +311,10 @@ function ensureMap(r){
   map=L.map("map",{zoomControl:false}).setView([r.lat,r.lon],r.zoom||13);
   L.tileLayer("https://api.vworld.kr/req/wmts/1.0.0/"+vworldKey+"/Base/{z}/{y}/{x}.png",{maxZoom:19,attribution:"VWorld"}).addTo(map);
   marker=L.marker([r.lat,r.lon]).addTo(map);
-  map.on("click",e=>{marker.setLatLng(e.latlng);updateResult(e.latlng,"지도 터치 위치")});
+  map.on("click",e=>{
+   marker.setLatLng(e.latlng);
+   updateDemAt(e.latlng.lat,e.latlng.lng,"지도 클릭 위치");
+  });
  }else{
   map.setView([r.lat,r.lon],r.zoom||13);
   marker.setLatLng([r.lat,r.lon]);
@@ -281,31 +324,96 @@ function ensureMap(r){
 
 function moveToRiver(r){
  ensureMap(r);
- updateResult({lat:r.lat,lng:r.lon},r.name);
+ updateDemAt(r.lat,r.lon,r.name);
  setTimeout(()=>document.getElementById("mapCard").scrollIntoView({behavior:"smooth"}),200);
 }
 
-function updateResult(latlng,name){
- const z=(Math.abs(Math.sin((latlng.lat+latlng.lng)*1000))*10).toFixed(1);
- let state="교량 구간";
- if(z<=2.5) state="둔치 구간";
- if(z<=0.3) state="수면 구간";
- if(z>2.5&&z<=7.0) state="제방 구간";
- document.getElementById("heightText").innerText=z+"m";
- document.getElementById("stateText").innerText=state;
- document.getElementById("riverName").innerText=name;
- document.getElementById("result").innerText=`위치 = ${name}
-위도 = ${latlng.lat.toFixed(7)}
-경도 = ${latlng.lng.toFixed(7)}
+function readDemHeight(lat,lon){
+ if(!demRaster) return {ok:false,msg:"DEM 미로드"};
 
-현재 높이 = ${z}m
-현재 상태 = ${state}
+ const xy=proj4("EPSG:4326","EPSG:5179",[lon,lat]);
+ const x=xy[0], y=xy[1];
 
-주의:
-모바일 HTTPS 테스트용 샘플 높이입니다.`;
+ const projectedInside = x>=demMinX && x<demMaxX && y>=demMinY && y<demMaxY;
+ if(!projectedInside){
+  return {ok:false,msg:"DEM 범위 밖",x,y};
+ }
+
+ const rawRow=(originY-y)/Math.abs(pixelY);
+ const rawCol=(x-originX)/pixelX;
+
+ const row=Math.floor(rawRow);
+ const col=Math.floor(rawCol);
+
+ const pixelInside = row>=0 && col>=0 && row<demHeight && col<demWidth;
+ if(!pixelInside){
+  return {ok:false,msg:"DEM 픽셀 범위 밖",x,y,rawRow,rawCol,row,col};
+ }
+
+ const idx=row*demWidth+col;
+ const z=Number(demRaster[idx]);
+
+ if(!Number.isFinite(z)){
+  return {ok:false,msg:"DEM 값 오류",x,y,rawRow,rawCol,row,col,idx};
+ }
+
+ return {ok:true,z,x,y,rawRow,rawCol,row,col,idx};
 }
 
-init();
+function updateDemAt(lat,lon,name){
+ const r=readDemHeight(lat,lon);
+ document.getElementById("placeName").innerText=name;
+
+ if(!r.ok){
+  document.getElementById("heightText").innerText="-";
+  document.getElementById("droneRelText").innerText="-";
+  document.getElementById("result").innerText=
+`위치 = ${name}
+위도 = ${lat.toFixed(7)}
+경도 = ${lon.toFixed(7)}
+
+상태 = ${r.msg}
+
+EPSG:5179 X = ${r.x ? r.x.toFixed(3) : "-"}
+EPSG:5179 Y = ${r.y ? r.y.toFixed(3) : "-"}
+
+DEM 범위:
+X = ${demMinX.toFixed(3)} ~ ${demMaxX.toFixed(3)}
+Y = ${demMinY.toFixed(3)} ~ ${demMaxY.toFixed(3)}
+
+row = ${r.row ?? "-"}
+col = ${r.col ?? "-"}
+
+판정:
+현재 위치는 선택한 DEM 영역 밖입니다.
+다른 DEM을 선택하거나 DEM 영역 안쪽을 터치하세요.`;
+  return;
+ }
+
+ const droneAbs = r.z + DRONE_AGL;
+
+ document.getElementById("heightText").innerText=r.z.toFixed(2)+"m";
+ document.getElementById("droneRelText").innerText=DRONE_AGL+"m";
+ document.getElementById("result").innerText=
+`위치 = ${name}
+위도 = ${lat.toFixed(7)}
+경도 = ${lon.toFixed(7)}
+
+EPSG:5179 X = ${r.x.toFixed(3)}
+EPSG:5179 Y = ${r.y.toFixed(3)}
+
+rawRow = ${r.rawRow.toFixed(6)}
+rawCol = ${r.rawCol.toFixed(6)}
+
+row = ${r.row}
+col = ${r.col}
+index = ${r.idx}
+
+실제 DEM 고도 = ${r.z.toFixed(5)} m
+
+드론 고도 기준:
+지면고도 + 100m = ${droneAbs.toFixed(2)} m`;
+}
 </script>
 </body>
 </html>
