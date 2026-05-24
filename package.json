@@ -13,11 +13,12 @@
     "electron-builder": "^24.13.3"
   },
 
-  "build": {
-    "appId": "com.riverdem.pc",
-    "productName": "RiverDEM",
-    "win": {
-      "target": "nsis"
-    }
+"build": {
+  "appId": "com.riverdem.pc",
+  "productName": "RiverDEM",
+  "publish": null,
+  "win": {
+    "target": "nsis"
   }
+}
 }
