@@ -1,434 +1,160 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>RiverDEM</title>
 
-<link rel="stylesheet"
-href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 
 <style>
-
-*{
-box-sizing:border-box
-}
-
 html,body{
-margin:0;
-width:100%;
-height:100%;
-overflow:hidden;
-font-family:Segoe UI,Malgun Gothic,sans-serif;
-color:#111827;
-background:#eef2f7
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    font-family:"Segoe UI",sans-serif;
 }
 
 #map{
-position:absolute;
-inset:0 0 42px 0;
-background:#dbeafe
-}
-
-.panel{
-position:absolute;
-z-index:800;
-background:rgba(255,255,255,.96);
-border:1px solid #dbe3ef;
-border-radius:14px;
-box-shadow:0 14px 42px #0002;
-backdrop-filter:blur(10px)
-}
-
-.left{
-top:34px;
-left:0;
-width:265px;
-height:calc(100vh - 76px);
-border-radius:0 14px 14px 0;
-overflow:visible
-}
-
-.left .body{
-height:calc(100% - 52px);
-overflow:auto;
-padding-bottom:74px
-}
-
-.right{
-top:44px;
-right:24px;
-width:330px;
-max-height:calc(100vh - 104px);
-overflow:visible
-}
-
-.right .body{
-max-height:calc(100vh - 160px);
-overflow:auto
-}
-
-.head{
-padding:15px 18px;
-font-size:17px;
-font-weight:900;
-border-bottom:1px solid #e5e7eb
-}
-
-.body{
-padding:14px 18px
-}
-
-.search,
-select,
-input[type=text]{
-width:100%;
-padding:11px;
-border:1px solid #cfd8e3;
-border-radius:9px;
-margin-top:7px;
-font-weight:700;
-background:white
-}
-
-.group{
-margin-top:12px
-}
-
-.groupTitle{
-font-weight:900;
-margin:10px 0;
-color:#374151
-}
-
-.river{
-display:flex;
-align-items:center;
-gap:8px;
-padding:7px 4px;
-cursor:pointer;
-border-radius:8px;
-font-size:14px
-}
-
-.river:hover,
-.river.active{
-background:#dbeafe;
-color:#1d4ed8;
-font-weight:900
-}
-
-.chk{
-margin-left:auto;
-width:16px;
-height:16px;
-border:1px solid #cbd5e1;
-border-radius:4px
-}
-
-.river.active .chk{
-background:#2563eb;
-border-color:#2563eb
-}
-
-.apply{
-width:100%;
-padding:12px;
-border:0;
-border-radius:9px;
-background:#2563eb;
-color:white;
-font-weight:900;
-margin-top:14px
-}
-
-.collapseBtn{
-position:absolute;
-top:10px;
-width:34px;
-height:34px;
-border:1px solid #dbe3ef;
-background:white;
-z-index:5000;
-cursor:pointer;
-font-weight:900;
-box-shadow:0 8px 22px #0002
-}
-
-.left .collapseBtn{
-right:-34px;
-border-radius:0 8px 8px 0
-}
-
-.right .collapseBtn{
-left:-34px;
-border-radius:8px 0 0 8px
-}
-
-.left.collapsed{
-width:0;
-border:none;
-overflow:visible;
-box-shadow:none
-}
-
-.right.collapsed{
-width:0;
-border:none;
-overflow:visible;
-box-shadow:none;
-right:0
-}
-
-.left.collapsed .head,
-.left.collapsed .body,
-.right.collapsed .head,
-.right.collapsed .body{
-display:none
-}
-
-.toolbar{
-position:absolute;
-left:18px;
-top:152px;
-z-index:820;
-background:white;
-border-radius:8px;
-box-shadow:0 8px 22px #0002;
-overflow:hidden
-}
-
-.left:not(.collapsed)+.toolbar{
-display:none
-}
-
-.tool{
-width:40px;
-height:40px;
-display:flex;
-align-items:center;
-justify-content:center;
-border-bottom:1px solid #e5e7eb;
-cursor:pointer;
-font-size:20px
-}
-
-.tool:hover,
-.tool.active{
-background:#2563eb;
-color:#fff
-}
-
-.label{
-font-size:14px;
-font-weight:900;
-color:#374151;
-margin-top:14px
-}
-
-.row{
-display:flex;
-align-items:center;
-justify-content:space-between;
-margin-top:15px;
-font-weight:800
-}
-
-.switch{
-position:relative;
-width:43px;
-height:24px;
-border-radius:999px;
-background:#d1d5db;
-cursor:pointer
-}
-
-.switch.on{
-background:#2563eb
-}
-
-.switch:after{
-content:"";
-position:absolute;
-top:3px;
-left:3px;
-width:18px;
-height:18px;
-background:white;
-border-radius:50%;
-transition:.15s
-}
-
-.switch.on:after{
-left:22px
-}
-
-.rangeRow{
-display:grid;
-grid-template-columns:1fr 48px;
-gap:10px;
-align-items:center;
-margin-top:7px
-}
-
-input[type=range]{
-width:100%;
-accent-color:#2563eb
-}
-
-.bar{
-height:14px;
-border-radius:999px;
-background:linear-gradient(
-90deg,
-blue,
-cyan,
-lime,
-yellow,
-red
-)
-}
-
-.bottomBar{
-position:absolute;
-left:0;
-right:0;
-bottom:0;
-height:42px;
-z-index:900;
-background:rgba(255,255,255,.96);
-border-top:1px solid #dbe3ef;
-display:grid;
-grid-template-columns:1fr 520px;
-align-items:center;
-box-shadow:0 -8px 26px #0001
-}
-
-.bottomBox{
-height:100%;
-display:flex;
-align-items:center;
-padding:0 18px;
-border-right:1px solid #e5e7eb;
-font-weight:900
-}
-
-.statusBox{
-justify-content:flex-end;
-gap:22px;
-font-weight:900;
-grid-column:2
-}
-
-.log{
-position:absolute;
-left:280px;
-bottom:58px;
-z-index:806;
-width:360px;
-background:#111827;
-color:#4ade80;
-border-radius:14px;
-padding:12px 14px;
-font-family:Consolas,monospace;
-font-size:12px;
-white-space:pre-wrap;
-line-height:1.55
-}
-
-.infoGrid{
-display:grid;
-grid-template-columns:1fr auto;
-gap:10px;
-font-size:14px;
-margin-top:10px
-}
-
-.infoGrid div:nth-child(odd){
-color:#6b7280;
-font-weight:800
-}
-
-.infoGrid div:nth-child(even){
-font-weight:900
-}
-
-.keyBtn,
-.demBtn{
-width:100%;
-padding:12px;
-border:0;
-border-radius:9px;
-background:#2563eb;
-color:white;
-font-weight:900;
-margin-top:12px;
-cursor:pointer
-}
-
-.keyBtn:hover,
-.demBtn:hover{
-background:#1d4ed8
+    width:100%;
+    height:100%;
 }
 
 /* =========================
-VWorld Modal
+   공통 패널
 ========================= */
-
-#vworldModal{
-display:none;
-position:fixed;
-inset:0;
-background:rgba(0,0,0,.45);
-z-index:999999;
-align-items:center;
-justify-content:center
+.panel{
+    position:absolute;
+    top:55px;
+    width:290px;
+    height:calc(100% - 100px);
+    background:#f5f5f5;
+    border-radius:14px;
+    box-shadow:0 4px 14px rgba(0,0,0,.2);
+    overflow:hidden;
+    z-index:1000;
+    transition:all .25s ease;
 }
 
-#vworldModal .modalBox{
-width:430px;
-background:white;
-border-radius:14px;
-padding:22px;
-box-shadow:0 12px 40px rgba(0,0,0,.35)
+.panel .head{
+    padding:18px;
+    font-size:18px;
+    font-weight:700;
+    border-bottom:1px solid #ddd;
+    background:#fafafa;
 }
 
-#vworldModal h2{
-margin:0 0 18px 0;
-font-size:22px
+.panel .body{
+    height:calc(100% - 65px);
+    overflow:auto;
+    padding:14px;
 }
 
-#vworldModal input{
-width:100%;
-padding:12px;
-border:1px solid #d1d5db;
-border-radius:10px;
-font-size:14px
+/* =========================
+   좌측 패널
+========================= */
+.left{
+    left:15px;
 }
 
-.modalActions{
-display:flex;
-justify-content:flex-end;
-gap:10px;
-margin-top:18px
+.left.collapsed{
+    width:0;
+    overflow:visible;
+    border:none;
 }
 
-.modalBtn{
-padding:10px 16px;
-border:none;
-border-radius:8px;
-cursor:pointer;
-font-weight:700
+.left.collapsed .head,
+.left.collapsed .body{
+    display:none;
 }
 
-.cancelBtn{
-background:#e5e7eb
+/* =========================
+   우측 패널
+========================= */
+.right{
+    right:15px;
 }
 
-.saveBtn{
-background:#2563eb;
-color:white
+.right.collapsed{
+    width:0;
+    overflow:visible;
+    border:none;
 }
 
+.right.collapsed .head,
+.right.collapsed .body{
+    display:none;
+}
+
+/* =========================
+   토글 버튼
+========================= */
+.collapseBtn{
+    position:absolute;
+    top:12px;
+    width:32px;
+    height:48px;
+    border:none;
+    cursor:pointer;
+    background:white;
+    box-shadow:0 2px 8px rgba(0,0,0,.2);
+    font-size:20px;
+    font-weight:bold;
+    z-index:1200;
+}
+
+/* 왼쪽 */
+.left .collapseBtn{
+    right:-32px;
+    border-radius:0 10px 10px 0;
+}
+
+/* 오른쪽 */
+.right .collapseBtn{
+    left:-32px;
+    border-radius:10px 0 0 10px;
+}
+
+/* =========================
+   스크롤
+========================= */
+::-webkit-scrollbar{
+    width:8px;
+}
+
+::-webkit-scrollbar-thumb{
+    background:#bbb;
+    border-radius:10px;
+}
+
+/* =========================
+   예시 UI
+========================= */
+.item{
+    padding:10px;
+    border-bottom:1px solid #ddd;
+    cursor:pointer;
+}
+
+.item:hover{
+    background:#ececec;
+}
+
+.select{
+    width:100%;
+    padding:10px;
+    border-radius:8px;
+    border:1px solid #ccc;
+    margin-bottom:15px;
+}
+
+.toggle{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
+}
 </style>
 </head>
 
@@ -436,318 +162,135 @@ color:white
 
 <div id="map"></div>
 
+<!-- =========================
+     좌측 패널
+========================= -->
 <div class="panel left" id="leftPanel">
 
-<button class="collapseBtn"
-onclick="toggleLeft()">‹</button>
+    <button class="collapseBtn" onclick="toggleLeft()">‹</button>
 
-<div class="head">
-지역 / 하천 선택
-</div>
+    <div class="head">
+        지역 / 하천 선택
+    </div>
 
-<div class="body">
+    <div class="body">
 
-<input class="search"
-placeholder="하천 검색...">
+        <select class="select">
+            <option>전체</option>
+            <option>서울</option>
+            <option>경기</option>
+            <option>강원</option>
+        </select>
 
-</div>
+        <div class="item">한강 / 여의도</div>
+        <div class="item">한강 / 잠실</div>
+        <div class="item">중랑천</div>
+        <div class="item">탄천</div>
+        <div class="item">안양천</div>
+        <div class="item">북한강</div>
+        <div class="item">남한강</div>
+        <div class="item">소양강</div>
 
-</div>
-
-<div class="toolbar">
-<div class="tool active"
-onclick="toggleLeft()">☰</div>
-</div>
-
-<div class="panel right"
-id="rightPanel">
-
-<button class="collapseBtn"
-onclick="toggleRight()">›</button>
-
-<div class="head">
-지도 설정
-</div>
-
-<div class="body">
-
-<div class="label">
-배경지도 선택
-</div>
-
-<select id="baseMapSelect">
-<option>VWorld 기본지도</option>
-<option>VWorld 위성지도</option>
-<option>OSM</option>
-</select>
-
-<button class="keyBtn"
-onclick="setVWorldKey()">
-
-VWorld API Key 설정
-
-</button>
-
-</div>
-
-</div>
-
-<div class="log"
-id="log">
-
-준비 완료
-
-</div>
-
-<div class="bottomBar">
-
-<div class="bottomBox">
-준비 완료
-</div>
-
-<div class="bottomBox statusBox">
-
-<span id="statusEpsg">
-EPSG:4326
-</span>
-
-<span id="statusX">
-X: -
-</span>
-
-<span id="statusY">
-Y: -
-</span>
-
-<span id="statusZoom">
-레벨: 9
-</span>
-
-</div>
-
+    </div>
 </div>
 
 <!-- =========================
-VWorld Modal
+     우측 패널
 ========================= -->
+<div class="panel right" id="rightPanel">
 
-<div id="vworldModal">
+    <button class="collapseBtn" onclick="toggleRight()">›</button>
 
-<div class="modalBox">
+    <div class="head">
+        지도 설정
+    </div>
 
-<h2>
-VWorld API Key 설정
-</h2>
+    <div class="body">
 
-<input
-id="vworldKeyInput"
-type="text"
-placeholder="VWorld API Key 입력">
+        <h3>배경지도 선택</h3>
 
-<div class="modalActions">
+        <select class="select">
+            <option>VWorld 기본지도</option>
+            <option>위성지도</option>
+            <option>OSM</option>
+        </select>
 
-<button
-class="modalBtn cancelBtn"
-onclick="closeVWorldModal()">
+        <h3>지도 표시</h3>
 
-취소
+        <div class="toggle">
+            <span>측척 표시</span>
+            <input type="checkbox" checked>
+        </div>
 
-</button>
+        <div class="toggle">
+            <span>범례 표시</span>
+            <input type="checkbox" checked>
+        </div>
 
-<button
-class="modalBtn saveBtn"
-onclick="saveVWorldKey()">
+        <div class="toggle">
+            <span>좌표 표시</span>
+            <input type="checkbox" checked>
+        </div>
 
-저장
+        <h3>레이어</h3>
 
-</button>
+        <div class="toggle">
+            <span>DEM Overlay</span>
+            <input type="checkbox" checked>
+        </div>
 
+        <div class="toggle">
+            <span>Heat Map</span>
+            <input type="checkbox" checked>
+        </div>
+
+    </div>
 </div>
 
-</div>
-
-</div>
-
-<script
-src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
-</script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
+const map = L.map('map').setView([36.5,127.8], 7);
 
-const map =
-L.map("map")
-.setView([35.186645,127.622747],9);
-
-let baseLayer;
-
-function getKey(){
-
-return localStorage.getItem(
-"vworld_key"
-)
-
-||
-
-localStorage.getItem(
-"VWORLD_API_KEY"
-)
-
-||
-
-"";
+L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+{
+    attribution:'© OpenStreetMap'
 }
+).addTo(map);
 
-function setBaseMap(){
+const leftPanel = document.getElementById("leftPanel");
+const rightPanel = document.getElementById("rightPanel");
 
-if(baseLayer)
-map.removeLayer(baseLayer);
-
-const key = getKey();
-
-let url;
-
-if(key){
-
-url =
-`https://api.vworld.kr/req/wmts/1.0.0/${key}/Base/{z}/{y}/{x}.png`;
-
-}else{
-
-url =
-"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-}
-
-baseLayer =
-L.tileLayer(url,{
-maxZoom:19
-}).addTo(map);
-}
-
-function setVWorldKey(){
-
-const modal =
-document.getElementById(
-"vworldModal"
-);
-
-const input =
-document.getElementById(
-"vworldKeyInput"
-);
-
-input.value = getKey();
-
-modal.style.display = "flex";
-
-setTimeout(()=>{
-
-input.focus();
-
-},50);
-}
-
-function closeVWorldModal(){
-
-document.getElementById(
-"vworldModal"
-).style.display = "none";
-}
-
-function saveVWorldKey(){
-
-const input =
-document.getElementById(
-"vworldKeyInput"
-);
-
-const key =
-input.value.trim();
-
-if(key){
-
-localStorage.setItem(
-"vworld_key",
-key
-);
-
-localStorage.setItem(
-"VWORLD_API_KEY",
-key
-);
-
-}else{
-
-localStorage.removeItem(
-"vworld_key"
-);
-
-localStorage.removeItem(
-"VWORLD_API_KEY"
-);
-}
-
-closeVWorldModal();
-
-setBaseMap();
-
-alert(
-key
-? "VWorld API Key 저장 완료"
-: "VWorld API Key 삭제 완료"
-);
-}
-const leftPanel =
-document.getElementById(
-"leftPanel"
-);
-
-const rightPanel =
-document.getElementById(
-"rightPanel"
-);
-
-function toggleRight(){
-
-rightPanel.classList.toggle(
-"collapsed"
-);
-
-const btn =
-rightPanel.querySelector(
-".collapseBtn"
-);
-
-btn.innerText =
-rightPanel.classList.contains(
-"collapsed"
-)
-
-? "‹"
-: "›";
-}
-
+/* =========================
+   좌측 패널 토글
+========================= */
 function toggleLeft(){
 
-leftPanel.classList.toggle(
-"collapsed"
-);
+    leftPanel.classList.toggle("collapsed");
 
-const btn =
-leftPanel.querySelector(
-".collapseBtn"
-);
+    const btn = leftPanel.querySelector(".collapseBtn");
 
-btn.innerText =
-leftPanel.classList.contains(
-"collapsed"
-)
-
-? "›"
-: "‹";
+    btn.innerText =
+        leftPanel.classList.contains("collapsed")
+        ? "›"
+        : "‹";
 }
 
-setBaseMap();
+/* =========================
+   우측 패널 토글
+========================= */
+function toggleRight(){
 
+    rightPanel.classList.toggle("collapsed");
+
+    const btn = rightPanel.querySelector(".collapseBtn");
+
+    btn.innerText =
+        rightPanel.classList.contains("collapsed")
+        ? "‹"
+        : "›";
+}
 </script>
 
 </body>
