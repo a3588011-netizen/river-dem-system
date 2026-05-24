@@ -42,11 +42,11 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,M
 .rangeRow{display:grid;grid-template-columns:1fr 48px;gap:10px;align-items:center;margin-top:7px}
 input[type=range]{width:100%;accent-color:#2563eb}
 .bar{height:14px;border-radius:999px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red)}
-.bottomBar{position:absolute;left:0;right:0;bottom:0;height:42px;z-index:900;background:rgba(255,255,255,.96);border-top:1px solid #dbe3ef;display:grid;grid-template-columns:220px 260px 1fr 430px;align-items:center;box-shadow:0 -8px 26px #0001}
+.bottomBar{position:fixed;left:0;right:0;bottom:0;height:42px;z-index:99999;background:rgba(255,255,255,.96);border-top:1px solid #dbe3ef;display:grid;grid-template-columns:1fr 520px;align-items:center;box-shadow:0 -8px 26px #0001}
 .bottomBox{height:100%;display:flex;align-items:center;padding:0 18px;border-right:1px solid #e5e7eb;font-weight:900}
 .scaleLine{width:110px;height:18px;border-left:2px solid #111;border-right:2px solid #111;border-bottom:2px solid #111;margin:0 10px}
 .legendMini{width:185px;height:14px;border-radius:999px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red);margin:0 10px}
-.statusBox{justify-content:flex-end;gap:22px;font-weight:900}
+.statusBox{justify-content:flex-end;gap:22px;font-weight:900;border-right:0;white-space:nowrap}
 .log{position:absolute;left:280px;bottom:58px;z-index:806;width:360px;background:#111827;color:#4ade80;border-radius:14px;padding:12px 14px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.55}
 .infoGrid{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:14px;margin-top:10px}
 .infoGrid div:nth-child(odd){color:#6b7280;font-weight:800}
@@ -105,10 +105,6 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     </select>
     <div class="help">VWorld 위성지도는 API Key가 저장되어 있어야 정상 표시됩니다. 없으면 OSM으로 대체됩니다.</div>
 
-    <div class="label">지도 표시</div>
-    <div class="row">측척 표시 <span id="scaleSw" class="switch on" onclick="toggleSwitch(this,'scale')"></span></div>
-    <div class="row">범례 표시 <span id="legendSw" class="switch on" onclick="toggleSwitch(this,'legend')"></span></div>
-    <div class="row">좌표 표시 <span id="coordSw" class="switch on" onclick="toggleSwitch(this,'coord')"></span></div>
 
     <hr>
     <div class="label">좌표계 선택</div>
@@ -145,8 +141,6 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 <div class="log" id="log">File → DEM 열기 또는 Ctrl+O 로 DEM을 선택하세요.</div>
 
 <div class="bottomBar">
-  <div class="bottomBox" id="scaleBox">측척 <div class="scaleLine"></div>10 km</div>
-  <div class="bottomBox" id="legendBox">범례(m)<div class="legendMini"></div></div>
   <div class="bottomBox">준비 완료</div>
   <div class="bottomBox statusBox" id="statusBox">
     <span id="statusEpsg">EPSG:4326</span>
@@ -321,9 +315,6 @@ function setOverlayOpacity(){
 }
 function toggleSwitch(el,type){
   el.classList.toggle("on");
-  if(type==="legend")legendBox.style.display=el.classList.contains("on")?"flex":"none";
-  if(type==="scale")scaleBox.style.display=el.classList.contains("on")?"flex":"none";
-  if(type==="coord")statusBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="heat"||type==="dem")setOverlayOpacity();
 }
 function toggleRight(){
