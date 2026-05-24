@@ -203,11 +203,40 @@ let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,ma
 let heatOverlay=null, selectedRiver=null, lastLatLng=null;
 
 function initMap(){
-  map=L.map("map",{zoomControl:false}).setView([35.186645,127.622747],9);
-  setBaseMap();
-  map.on("mousemove",e=>updateStatus(e.latlng));
-  map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
-  map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
+
+  map=L.map(
+    "map",
+    {zoomControl:false}
+  ).setView(
+    [35.186645,127.622747],
+    9
+  );
+
+  setTimeout(()=>{
+    setBaseMap();
+  },0);
+
+  map.on(
+    "mousemove",
+    e=>updateStatus(e.latlng)
+  );
+
+  map.on(
+    "zoomend",
+    ()=>{
+      statusZoom.innerText=
+      "레벨: "+map.getZoom();
+    }
+  );
+
+  map.on(
+    "click",
+    e=>samplePoint(
+      e.latlng.lat,
+      e.latlng.lng
+    )
+  );
+
   renderRivers();
 }
 function getKey(){return localStorage.getItem("vworld_key")||localStorage.getItem("VWORLD_API_KEY")||""}
@@ -226,7 +255,36 @@ function setVWorldKey(){
   setBaseMap();
   alert(clean?"VWorld API Key가 저장되었습니다.":"VWorld API Key가 삭제되었습니다.");
 }
+function closeVWorldModal(){
+  const modal=document.getElementById("vworldModal");
+  if(modal)modal.style.display="none";
+}
+
+function saveVWorldKey(){
+  const input=document.getElementById("vworldKeyInput");
+  const key=(input?.value||"").trim();
+
+  if(key){
+    localStorage.setItem("vworld_key",key);
+    localStorage.setItem("VWORLD_API_KEY",key);
+  }else{
+    localStorage.removeItem("vworld_key");
+    localStorage.removeItem("VWORLD_API_KEY");
+  }
+
+  closeVWorldModal();
+
+  setBaseMap();
+
+  alert(
+    key
+    ? "VWorld API Key 저장 완료"
+    : "VWorld API Key 삭제 완료"
+  );
+}
+
 function setBaseMap(){
+  if(!map)return;
   if(baseLayer)map.removeLayer(baseLayer);
   if(blankLayer)map.removeLayer(blankLayer);
   const type=baseMapSelect.value;
