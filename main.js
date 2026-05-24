@@ -10,7 +10,7 @@ function createWindow(){
   mainWindow.loadFile(path.join(__dirname,'index.html'));
   const template=[
     {label:'File',submenu:[
-      {label:'DEM 열기',accelerator:'Ctrl+O',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}},
+      {label:'DEM 열기',accelerator:'Ctrl+O',click(){mainWindow.webContents.executeJavaScript("window.openDemFile ? window.openDemFile() : document.getElementById('demFile').click()")}},
       {type:'separator'},{label:'종료',click(){app.quit()}}
     ]},
     {label:'Edit',submenu:[

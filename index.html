@@ -9,8 +9,10 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Malgun Gothic,sans-serif;color:#111827;background:#eef2f7}
 #map{position:absolute;inset:0 0 42px 0;background:#dbeafe}
 .panel{position:absolute;z-index:800;background:rgba(255,255,255,.96);border:1px solid #dbe3ef;border-radius:14px;box-shadow:0 14px 42px #0002;backdrop-filter:blur(10px)}
-.left{top:34px;left:0;width:265px;height:calc(100vh - 76px);border-radius:0 14px 14px 0;overflow:auto}
-.right{top:44px;right:24px;width:330px;max-height:calc(100vh - 104px);overflow:auto}
+.left{top:34px;left:0;width:265px;height:calc(100vh - 76px);border-radius:0 14px 14px 0;overflow:visible}
+.left .body{height:calc(100% - 52px);overflow:auto;padding-bottom:74px}
+.right{top:44px;right:24px;width:330px;max-height:calc(100vh - 104px);overflow:visible}
+.right .body{max-height:calc(100vh - 160px);overflow:auto}
 .head{padding:15px 18px;font-size:17px;font-weight:900;border-bottom:1px solid #e5e7eb}
 .body{padding:14px 18px}
 .search,select,input[type=text]{width:100%;padding:11px;border:1px solid #cfd8e3;border-radius:9px;margin-top:7px;font-weight:700;background:white}
@@ -21,9 +23,12 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,M
 .chk{margin-left:auto;width:16px;height:16px;border:1px solid #cbd5e1;border-radius:4px}
 .river.active .chk{background:#2563eb;border-color:#2563eb}
 .apply{width:100%;padding:12px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:900;margin-top:14px}
-.collapseBtn{position:absolute;top:10px;right:-34px;width:34px;height:34px;border:1px solid #dbe3ef;background:white;border-radius:0 8px 8px 0;z-index:810;cursor:pointer;font-weight:900}
-.left.collapsed{width:0;border:none;overflow:visible}
-.left.collapsed .head,.left.collapsed .body{display:none}
+.collapseBtn{position:absolute;top:10px;width:34px;height:34px;border:1px solid #dbe3ef;background:white;z-index:5000;cursor:pointer;font-weight:900;box-shadow:0 8px 22px #0002}
+.left .collapseBtn{right:-34px;border-radius:0 8px 8px 0}
+.right .collapseBtn{left:-34px;border-radius:8px 0 0 8px}
+.left.collapsed{width:0;border:none;overflow:visible;box-shadow:none}
+.right.collapsed{width:0;border:none;overflow:visible;box-shadow:none;right:0}
+.left.collapsed .head,.left.collapsed .body,.right.collapsed .head,.right.collapsed .body{display:none}
 .toolbar{position:absolute;left:18px;top:152px;z-index:820;background:white;border-radius:8px;box-shadow:0 8px 22px #0002;overflow:hidden}
 .left:not(.collapsed) + .toolbar{display:none}
 .tool{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #e5e7eb;cursor:pointer;font-size:20px}
@@ -37,11 +42,11 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,M
 .rangeRow{display:grid;grid-template-columns:1fr 48px;gap:10px;align-items:center;margin-top:7px}
 input[type=range]{width:100%;accent-color:#2563eb}
 .bar{height:14px;border-radius:999px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red)}
-.bottomBar{position:absolute;left:0;right:0;bottom:0;height:42px;z-index:900;background:rgba(255,255,255,.96);border-top:1px solid #dbe3ef;display:grid;grid-template-columns:220px 260px 1fr 430px;align-items:center;box-shadow:0 -8px 26px #0001}
+.bottomBar{position:absolute;left:0;right:0;bottom:0;height:42px;z-index:900;background:rgba(255,255,255,.96);border-top:1px solid #dbe3ef;display:grid;grid-template-columns:1fr 520px;align-items:center;box-shadow:0 -8px 26px #0001}
 .bottomBox{height:100%;display:flex;align-items:center;padding:0 18px;border-right:1px solid #e5e7eb;font-weight:900}
 .scaleLine{width:110px;height:18px;border-left:2px solid #111;border-right:2px solid #111;border-bottom:2px solid #111;margin:0 10px}
 .legendMini{width:185px;height:14px;border-radius:999px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red);margin:0 10px}
-.statusBox{justify-content:flex-end;gap:22px;font-weight:900}
+.statusBox{justify-content:flex-end;gap:22px;font-weight:900;grid-column:2}
 .log{position:absolute;left:280px;bottom:58px;z-index:806;width:360px;background:#111827;color:#4ade80;border-radius:14px;padding:12px 14px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.55}
 .infoGrid{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:14px;margin-top:10px}
 .infoGrid div:nth-child(odd){color:#6b7280;font-weight:800}
@@ -51,15 +56,9 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .help{font-size:12px;color:#6b7280;margin-top:6px;line-height:1.45}
 .regionBadge{display:inline-block;background:#eef2ff;color:#3730a3;border-radius:999px;padding:2px 8px;font-size:11px;margin-left:4px}
 
-/* PATCH: panel collapse + fixed coordinate status */
-.right{transition:.25s;overflow:visible}
-.right.collapsed{width:0!important;border:none!important;box-shadow:none!important;overflow:visible!important;right:0!important}
-.right.collapsed .head,.right.collapsed .body{display:none!important}
-.right .collapseBtn{position:absolute;top:10px;left:-34px;right:auto;width:34px;height:34px;border:1px solid #dbe3ef;background:white;border-radius:8px 0 0 8px;z-index:810;cursor:pointer;font-weight:900}
-.bottomBar{position:fixed!important;left:0!important;right:0!important;bottom:0!important;grid-template-columns:1fr 520px!important}
+.keyBtn,.demBtn{width:100%;padding:12px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:900;margin-top:12px;cursor:pointer}
+.keyBtn:hover,.demBtn:hover{background:#1d4ed8}
 #scaleBox,#legendBox{display:none!important}
-.statusBox{grid-column:2;display:flex!important;justify-content:flex-end!important;gap:22px!important}
-
 </style>
 </head>
 <body>
@@ -109,9 +108,8 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <option value="blank">흰색 배경</option>
     </select>
     <div class="help">VWorld 지도는 API Key가 저장되어 있어야 정상 표시됩니다. 없으면 OSM으로 대체됩니다.</div>
-    <button class="apply" type="button" onclick="setVWorldKey()">VWorld API Key 설정</button>
-
-    <hr>
+    <button class="keyBtn" onclick="setVWorldKey()">VWorld API Key 설정</button>
+<hr>
     <div class="label">좌표계 선택</div>
     <select id="epsgSelect" onchange="updateStatus(lastLatLng)">
       <option value="EPSG:4326">EPSG:4326 (WGS84 위경도)</option>
@@ -121,6 +119,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
     <hr>
     <div class="label">레이어</div>
+    <button class="demBtn" onclick="openDemFile()">DEM 파일 열기</button>
     <div class="row">DEM Overlay <span id="demSw" class="switch on" onclick="toggleSwitch(this,'dem')"></span></div>
     <div class="rangeRow"><input id="demOpacity" type="range" min="10" max="100" value="100" oninput="setOverlayOpacity()"><span id="demOpText">100%</span></div>
 
@@ -186,12 +185,21 @@ function initMap(){
   map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
   renderRivers();
 }
-function getKey(){return localStorage.getItem("vworld_key")||""}
+function getKey(){return localStorage.getItem("vworld_key")||localStorage.getItem("VWORLD_API_KEY")||""}
 function setVWorldKey(){
-  const key=prompt("VWorld API Key 입력", getKey());
+  const old=getKey();
+  const key=prompt("VWorld API Key를 입력하세요",old);
   if(key===null)return;
-  localStorage.setItem("vworld_key", key.trim());
+  const clean=String(key).trim();
+  if(clean){
+    localStorage.setItem("vworld_key",clean);
+    localStorage.setItem("VWORLD_API_KEY",clean);
+  }else{
+    localStorage.removeItem("vworld_key");
+    localStorage.removeItem("VWORLD_API_KEY");
+  }
   setBaseMap();
+  alert(clean?"VWorld API Key가 저장되었습니다.":"VWorld API Key가 삭제되었습니다.");
 }
 function setBaseMap(){
   if(baseLayer)map.removeLayer(baseLayer);
@@ -211,7 +219,7 @@ function setBaseMap(){
     url=`https://api.vworld.kr/req/wmts/1.0.0/${key}/Base/{z}/{y}/{x}.png`; attr="VWorld";
   }else{
     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"; attr="OSM";
-    if((type==="vworld-satellite"||type==="vworld-base") && !key) alert("VWorld API Key가 없어 OSM 지도로 표시합니다.");
+    if(type==="vworld-satellite" && !key) alert("VWorld API Key가 없어 OSM 지도로 표시합니다.");
   }
   baseLayer=L.tileLayer(url,{maxZoom:19,attribution:attr}).addTo(map);
   if(heatOverlay)heatOverlay.bringToFront();
@@ -242,7 +250,7 @@ function renderRivers(){
     filtered.forEach(r=>{
       const d=document.createElement("div");d.className="river";d.innerHTML=`<span>›</span><span>${r[0]}</span><span class="chk"></span>`;
       d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;};
-      d.ondblclick=()=>{selectedRiver=r;document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");applySelectedRiver();};
+      d.ondblclick=()=>{selectedRiver=r;applySelectedRiver();};
       group.appendChild(d);
     });
     riverList.appendChild(group);
@@ -255,7 +263,16 @@ function applySelectedRiver(){
   log.innerText=`선택된 하천: ${selectedRiver[0]}\n좌표: ${selectedRiver[1]}, ${selectedRiver[2]}`;
   samplePoint(selectedRiver[1],selectedRiver[2]);
 }
-function openDemFile(){demFile.click();}
+function openDemFile(){
+  const input=document.getElementById("demFile");
+  if(!input){alert("DEM 파일 입력 요소를 찾지 못했습니다.");return;}
+  input.value="";
+  input.click();
+}
+window.openDemFile=openDemFile;
+window.setVWorldKey=setVWorldKey;
+window.toggleLeft=toggleLeft;
+window.toggleRight=toggleRight;
 demFile.addEventListener("change",async e=>{
   const f=e.target.files[0]; if(!f)return;
   log.innerText="DEM 로드 중...";
@@ -321,17 +338,21 @@ function setOverlayOpacity(){
 }
 function toggleSwitch(el,type){
   el.classList.toggle("on");
-  if(type==="legend")legendBox.style.display=el.classList.contains("on")?"flex":"none";
-  if(type==="scale")scaleBox.style.display=el.classList.contains("on")?"flex":"none";
+  if(type==="legend"&&window.legendBox)legendBox.style.display=el.classList.contains("on")?"flex":"none";
+  if(type==="scale"&&window.scaleBox)scaleBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="coord")statusBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="heat"||type==="dem")setOverlayOpacity();
 }
 function toggleRight(){
   rightPanel.classList.toggle("collapsed");
-  const b=rightPanel.querySelector(".collapseBtn");
-  if(b)b.innerText=rightPanel.classList.contains("collapsed")?"‹":"›";
+  const btn=rightPanel.querySelector(".collapseBtn");
+  if(btn)btn.innerText=rightPanel.classList.contains("collapsed")?"‹":"›";
 }
-function toggleLeft(){leftPanel.classList.toggle("collapsed");leftPanel.querySelector(".collapseBtn").innerText=leftPanel.classList.contains("collapsed")?"›":"‹"}
+function toggleLeft(){
+  leftPanel.classList.toggle("collapsed");
+  const btn=leftPanel.querySelector(".collapseBtn");
+  if(btn)btn.innerText=leftPanel.classList.contains("collapsed")?"›":"‹";
+}
 function toggleFull(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen()}
 function goCurrent(){navigator.geolocation?.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],15),e=>alert(e.message))}
 initMap();
