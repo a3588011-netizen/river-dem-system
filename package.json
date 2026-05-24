@@ -1,21 +1,27 @@
 {
-  "name": "riverdem-pc",
+  "name": "expectation-dem",
   "version": "1.0.0",
   "main": "main.js",
+
   "scripts": {
     "start": "electron .",
     "build": "electron-builder"
   },
+
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.13.3"
   },
+
   "build": {
-    "appId": "com.riverdem.pc",
-    "productName": "RiverDEM",
+    "appId": "com.expectation.dem",
+    "productName": "Expectation DEM",
+    "artifactName": "ExpectationDEM_Setup.${ext}",
     "publish": null,
+
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     }
   }
 }
