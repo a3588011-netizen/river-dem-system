@@ -12,7 +12,7 @@
   },
   "build": {
     "appId": "kr.riverdem.pc",
-    "productName": "River DEM",
+    "productName": "RiverDEM",
     "files": [
       "index.html",
       "main.js",

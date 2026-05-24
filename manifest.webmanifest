@@ -1,5 +1,5 @@
 {
-  "name": "하천 DEM 분석 시스템",
+  "name": "RiverDEM",
   "short_name": "RiverDEM",
   "start_url": "./index.html",
   "display": "standalone",
