@@ -1,19 +1,19 @@
 {
-  "name": "riverdem",
-  "version": "0.1.0",
-  "description": "하천 DEM 분석 시스템",
+  "name": "riverdem-pc",
+  "version": "1.0.0",
+  "description": "River DEM PC EXE",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:win": "electron-builder --win portable"
+    "build": "electron-builder --win portable"
   },
   "devDependencies": {
-    "electron": "^31.0.0",
+    "electron": "^31.7.7",
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "kr.riverdem.app",
-    "productName": "하천 DEM 분석 시스템",
+    "appId": "kr.riverdem.pc",
+    "productName": "River DEM",
     "files": [
       "index.html",
       "main.js",
@@ -21,7 +21,9 @@
       "sw.js"
     ],
     "win": {
-      "target": "portable"
+      "target": [
+        "portable"
+      ]
     }
   }
 }
