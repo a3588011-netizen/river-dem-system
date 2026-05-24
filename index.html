@@ -121,7 +121,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <option value="blank">흰색 배경</option>
     </select>
     <div class="help">VWorld 지도는 API Key가 저장되어 있어야 정상 표시됩니다. 없으면 OSM으로 대체됩니다.</div>
-    <button class="keyBtn" onclick="setVWorldKey()">VWorld API Key 설정</button>
+    <button class="keyBtn" id="vworldBtn" onclick="setVWorldKey()">VWorld API Key 설정</button>
 <hr>
     <div class="label">좌표계 선택</div>
     <select id="epsgSelect" onchange="updateStatus(lastLatLng)">
@@ -203,58 +203,36 @@ let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,ma
 let heatOverlay=null, selectedRiver=null, lastLatLng=null;
 
 function initMap(){
-
-  map=L.map(
-    "map",
-    {zoomControl:false}
-  ).setView(
-    [35.186645,127.622747],
-    9
-  );
+  map=L.map("map",{zoomControl:false}).setView([35.186645,127.622747],9);
 
   setTimeout(()=>{
     setBaseMap();
   },0);
 
-  map.on(
-    "mousemove",
-    e=>updateStatus(e.latlng)
-  );
-
-  map.on(
-    "zoomend",
-    ()=>{
-      statusZoom.innerText=
-      "레벨: "+map.getZoom();
-    }
-  );
-
-  map.on(
-    "click",
-    e=>samplePoint(
-      e.latlng.lat,
-      e.latlng.lng
-    )
-  );
-
+  map.on("mousemove",e=>updateStatus(e.latlng));
+  map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
+  map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
   renderRivers();
 }
 function getKey(){return localStorage.getItem("vworld_key")||localStorage.getItem("VWORLD_API_KEY")||""}
 function setVWorldKey(){
-  const old=getKey();
-  const key=prompt("VWorld API Key를 입력하세요",old);
-  if(key===null)return;
-  const clean=String(key).trim();
-  if(clean){
-    localStorage.setItem("vworld_key",clean);
-    localStorage.setItem("VWORLD_API_KEY",clean);
-  }else{
-    localStorage.removeItem("vworld_key");
-    localStorage.removeItem("VWORLD_API_KEY");
+  const modal=document.getElementById("vworldModal");
+  const input=document.getElementById("vworldKeyInput");
+
+  if(!modal||!input){
+    alert("VWorld 설정창을 찾지 못했습니다.");
+    return;
   }
-  setBaseMap();
-  alert(clean?"VWorld API Key가 저장되었습니다.":"VWorld API Key가 삭제되었습니다.");
+
+  input.value=getKey();
+  modal.style.display="flex";
+
+  setTimeout(()=>{
+    input.focus();
+    input.select();
+  },50);
 }
+
 function closeVWorldModal(){
   const modal=document.getElementById("vworldModal");
   if(modal)modal.style.display="none";
@@ -273,14 +251,9 @@ function saveVWorldKey(){
   }
 
   closeVWorldModal();
-
   setBaseMap();
 
-  alert(
-    key
-    ? "VWorld API Key 저장 완료"
-    : "VWorld API Key 삭제 완료"
-  );
+  alert(key ? "VWorld API Key 저장 완료" : "VWorld API Key 삭제 완료");
 }
 
 function setBaseMap(){
@@ -442,6 +415,14 @@ function goCurrent(){navigator.geolocation?.getCurrentPosition(p=>map.setView([p
 window.setVWorldKey=setVWorldKey;
 window.closeVWorldModal=closeVWorldModal;
 window.saveVWorldKey=saveVWorldKey;
+
+const vworldBtn=document.getElementById("vworldBtn");
+if(vworldBtn){
+  vworldBtn.addEventListener("click",function(e){
+    e.preventDefault();
+    setVWorldKey();
+  });
+}
 initMap();
 </script>
 </body>
