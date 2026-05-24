@@ -1,6 +1,35 @@
 const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
-let splash, mainWindow;
-function createSplash(){splash=new BrowserWindow({width:420,height:240,frame:false,alwaysOnTop:true,resizable:false,center:true,backgroundColor:'#111827'});splash.loadURL(`data:text/html;charset=utf-8,<html><body style="margin:0;background:#111827;color:#4ade80;font-family:Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh"><div style="text-align:center"><div style="font-size:30px;font-weight:900;color:white">River DEM</div><div style="margin-top:16px;font-size:15px">실행 중...</div><div style="margin-top:8px;font-size:13px;color:#9ca3af">지도 / DEM 엔진 로드 중</div></div></body></html>`)}
-function createWindow(){createSplash();mainWindow=new BrowserWindow({width:1500,height:950,minWidth:1100,minHeight:750,title:'하천 DEM 분석 시스템',show:false,backgroundColor:'#eef2f7',webPreferences:{nodeIntegration:false,contextIsolation:true}});mainWindow.loadFile(path.join(__dirname,'index.html'));const template=[{label:'File',submenu:[{label:'DEM 열기',accelerator:'Ctrl+O',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}},{type:'separator'},{label:'종료',click(){app.quit()}}]},{label:'Edit',submenu:[{label:'현재 DEM 제거',click(){mainWindow.webContents.executeJavaScript('alert("DEM 제거 완료")')}},{label:'설정 초기화',click(){mainWindow.webContents.executeJavaScript('localStorage.clear(); location.reload();')}}]},{label:'View',submenu:[{label:'지도 설정',click(){mainWindow.webContents.executeJavaScript('toggleRight()')}},{label:'전체화면',accelerator:'F11',click(){mainWindow.setFullScreen(!mainWindow.isFullScreen())}},{label:'현재 위치로 이동',click(){mainWindow.webContents.executeJavaScript('goCurrent()')}},{label:'새로고침',accelerator:'F5',click(){mainWindow.reload()}}]},{label:'Setting',submenu:[{label:'지도 설정 패널',click(){mainWindow.webContents.executeJavaScript('toggleRight()')}},{label:'UI 초기화',click(){mainWindow.webContents.executeJavaScript('location.reload();')}}]},{label:'Help',submenu:[{label:'버전 정보',click(){mainWindow.webContents.executeJavaScript('alert("River DEM Desktop GIS UI v1.0")')}}]}];Menu.setApplicationMenu(Menu.buildFromTemplate(template));mainWindow.once('ready-to-show',()=>{setTimeout(()=>{if(splash)splash.close();mainWindow.show()},700)})}
-app.whenReady().then(createWindow);app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
+let mainWindow;
+function createWindow(){
+  mainWindow=new BrowserWindow({
+    width:1500,height:950,minWidth:1100,minHeight:750,
+    title:'하천 DEM 분석 시스템',
+    webPreferences:{nodeIntegration:false,contextIsolation:true}
+  });
+  mainWindow.loadFile(path.join(__dirname,'index.html'));
+  const template=[
+    {label:'File',submenu:[
+      {label:'DEM 열기',accelerator:'Ctrl+O',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}},
+      {type:'separator'},{label:'종료',click(){app.quit()}}
+    ]},
+    {label:'Edit',submenu:[
+      {label:'설정 초기화',click(){mainWindow.webContents.executeJavaScript('localStorage.clear();location.reload();')}}
+    ]},
+    {label:'View',submenu:[
+      {label:'지도 설정',click(){mainWindow.webContents.executeJavaScript('toggleRight()')}},
+      {label:'전체화면',accelerator:'F11',click(){mainWindow.setFullScreen(!mainWindow.isFullScreen())}},
+      {label:'새로고침',accelerator:'F5',click(){mainWindow.reload()}}
+    ]},
+    {label:'Setting',submenu:[
+      {label:'Heat Map ON/OFF',click(){mainWindow.webContents.executeJavaScript("document.getElementById('heatSw').click()")}},
+      {label:'DEM 열기',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}}
+    ]},
+    {label:'Help',submenu:[
+      {label:'버전 정보',click(){mainWindow.webContents.executeJavaScript('alert("River DEM Desktop v2")')}}
+    ]}
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+app.whenReady().then(createWindow);
+app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});

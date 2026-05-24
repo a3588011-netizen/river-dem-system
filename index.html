@@ -1,5 +1,236 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>하천 DEM 분석 시스템</title><link rel="manifest" href="./manifest.webmanifest"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"><style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Malgun Gothic,sans-serif;color:#111827;background:#eef2f7}#app{position:relative;width:100vw;height:100vh}#map{position:absolute;inset:0;background:#dbeafe}.topTitle{position:absolute;top:18px;left:50%;transform:translateX(-50%);z-index:700;background:rgba(255,255,255,.86);backdrop-filter:blur(10px);border:1px solid #e5e7eb;border-radius:18px;padding:12px 22px;font-weight:900;font-size:22px;box-shadow:0 10px 30px #0002}.leftPanel{position:absolute;top:86px;left:24px;z-index:800;width:285px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border:1px solid #dbe3ef;border-radius:14px;box-shadow:0 18px 48px #0002;overflow:hidden}.menuItem{display:flex;gap:12px;align-items:center;padding:14px 18px;font-size:15px;font-weight:800;border-bottom:1px solid #edf1f7;cursor:pointer}.menuItem:hover,.menuItem.active{background:#dbeafe;color:#1d4ed8}.menuIcon{width:22px;text-align:center}.menuRight{margin-left:auto;color:#6b7280;font-weight:700}.menuSep{height:1px;background:#d1d5db;margin:8px 0}.check{width:18px;height:18px;border:1px solid #94a3b8;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;color:#2563eb}.rightPanel{position:absolute;top:122px;right:28px;z-index:800;width:355px;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border:1px solid #dbe3ef;border-radius:16px;box-shadow:0 18px 48px #0002;overflow:hidden}.panelHead{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;font-weight:900;font-size:20px}.panelBody{padding:0 22px 22px}.label{margin-top:18px;color:#374151;font-size:14px;font-weight:800}select,input[type=text]{width:100%;margin-top:8px;padding:12px 14px;border:1px solid #cfd8e3;border-radius:10px;background:white;font-weight:700;color:#374151}.rangeRow{display:grid;grid-template-columns:1fr 54px;gap:12px;align-items:center;margin-top:8px}input[type=range]{width:100%;accent-color:#2563eb}.toggleRow{display:flex;justify-content:space-between;align-items:center;margin-top:18px;font-weight:800}.switch{position:relative;width:44px;height:25px;background:#2563eb;border-radius:999px}.switch:after{content:"";position:absolute;right:3px;top:3px;width:19px;height:19px;background:white;border-radius:50%;box-shadow:0 2px 8px #0003}.btn{width:100%;padding:14px;margin-top:18px;border:none;border-radius:10px;font-weight:900;font-size:15px;background:#f3f4f6;color:#111827;border:1px solid #d1d5db}.status{position:absolute;right:28px;bottom:28px;z-index:700;background:rgba(255,255,255,.92);border:1px solid #dbe3ef;border-radius:10px;padding:10px 16px;font-weight:800;box-shadow:0 10px 30px #0002}.scale{position:absolute;left:30px;bottom:34px;z-index:700;background:rgba(255,255,255,.85);padding:8px 12px;border-radius:8px;font-weight:900}.demBox{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:650;width:510px;height:510px;background:linear-gradient(140deg,rgba(245,48,35,.58),rgba(255,96,58,.55));border:1px solid rgba(255,255,255,.35);box-shadow:0 16px 50px #0002;pointer-events:none}.demRiver{position:absolute;inset:0;background:linear-gradient(35deg,transparent 0 42%,rgba(57,255,155,.75) 43%,rgba(45,220,255,.85) 48%,rgba(35,75,255,.8) 52%,rgba(110,255,120,.75) 57%,transparent 58%),linear-gradient(115deg,transparent 0 42%,rgba(255,245,90,.75) 45%,rgba(62,255,139,.75) 48%,transparent 54%);mix-blend-mode:multiply}.markerLabel{position:absolute;z-index:660;text-align:center;font-weight:900;text-shadow:0 1px 2px white}.m1{left:48%;top:24%}.m2{left:45%;top:54%}.m3{left:52%;top:70%}.log{position:absolute;left:24px;bottom:24px;z-index:900;width:360px;background:#111827;color:#4ade80;border-radius:14px;padding:12px 14px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;display:none}.fileInput{display:none}
-</style></head><body><input class="fileInput" id="demFile" type="file" accept=".tif,.tiff"><div id="app"><div id="map"></div><div class="topTitle">☰ 하천 DEM 분석 시스템</div><div class="leftPanel"><div class="menuItem active"><span class="menuIcon">⚙</span>지도 설정</div><div class="menuItem" onclick="toggleFull()"><span class="menuIcon">▣</span>전체화면 <span class="menuRight">F11</span></div><div class="menuItem" onclick="goCurrent()"><span class="menuIcon">⌖</span>현재 위치로 이동</div><div class="menuItem" onclick="location.reload()"><span class="menuIcon">↻</span>새로고침 <span class="menuRight">F5</span></div><div class="menuSep"></div><div class="menuItem"><span class="menuIcon">›</span>지도 스타일 <span class="menuRight">›</span></div><div class="menuItem"><span class="menuIcon">›</span>레이어 관리 <span class="menuRight">›</span></div><div class="menuItem"><span class="menuIcon">›</span>측정 도구 <span class="menuRight">›</span></div><div class="menuSep"></div><div class="menuItem" onclick="toggleCheck(this)"><span class="check">✓</span>측척 표시</div><div class="menuItem" onclick="toggleCheck(this)"><span class="check">✓</span>범례 표시</div><div class="menuItem" onclick="toggleCheck(this)"><span class="check"></span>좌표 표시</div></div><div class="demBox"><div class="demRiver"></div></div><div class="markerLabel m1">⛰<br>황장산<br>(947.7m)</div><div class="markerLabel m2">⛰<br>백운산<br>(1,222.2m)</div><div class="markerLabel m3">⊙ 광양시</div><div class="rightPanel" id="rightPanel"><div class="panelHead">지도 설정 <span style="cursor:pointer" onclick="toggleRight()">×</span></div><div class="panelBody"><div class="label">지도 스타일</div><select id="mapStyle" onchange="setBaseMap()"><option>기본 지도 (VWorld)</option><option>위성 지도</option><option>지형 지도</option></select><div class="label">배경 지도 투명도</div><div class="rangeRow"><input type="range" min="20" max="100" value="100" oninput="baseOpacity.innerText=this.value+'%'"><span id="baseOpacity">100%</span></div><div class="label">좌표계</div><select><option>EPSG:3857 (Web Mercator)</option><option>EPSG:4326 (WGS84)</option><option>EPSG:5179 (Korea 2000)</option></select><div class="toggleRow">측척 표시 <span class="switch"></span></div><div class="toggleRow">범례 표시 <span class="switch"></span></div><div class="toggleRow">좌표 표시 <span class="switch"></span></div><div class="label">기본 중심 좌표</div><input type="text" value="127.8801"><input type="text" value="35.0977"><div class="label">기본 확대 레벨</div><div class="rangeRow"><input type="range" min="7" max="16" value="9" oninput="zoomText.innerText=this.value"><span id="zoomText">9</span></div><button class="btn" onclick="resetView()">기본값으로 복원</button></div></div><div class="status">EPSG:3857&nbsp;&nbsp; X: 127.8801&nbsp;&nbsp; Y: 35.0977</div><div class="scale">2 km</div><div class="log" id="log">DEM 대기 중</div></div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><script>
-let map,layer,vworldKey=localStorage.getItem('vworld_key')||'';function initMap(){map=L.map('map',{zoomControl:false}).setView([35.0977,127.8801],9);setBaseMap();map.on('mousemove',e=>{document.querySelector('.status').innerText=`EPSG:3857   X: ${e.latlng.lng.toFixed(4)}   Y: ${e.latlng.lat.toFixed(4)}`})}function setBaseMap(){if(layer)map.removeLayer(layer);const url=vworldKey?'https://api.vworld.kr/req/wmts/1.0.0/'+vworldKey+'/Base/{z}/{y}/{x}.png':'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';layer=L.tileLayer(url,{maxZoom:19,attribution:vworldKey?'VWorld':'OSM'}).addTo(map)}function toggleRight(){rightPanel.style.display=rightPanel.style.display==='none'?'block':'none'}function toggleFull(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen()}function goCurrent(){if(!navigator.geolocation){alert('GPS 미지원');return}navigator.geolocation.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],15),e=>alert(e.message))}function resetView(){map.setView([35.0977,127.8801],9)}function toggleCheck(el){const c=el.querySelector('.check');c.innerText=c.innerText?'':'✓'}function openDemFile(){demFile.click()}demFile.addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;log.style.display='block';log.innerText='DEM 파일 선택됨:\n'+f.name+'\n\n분석 엔진 연결 대기'});initMap();
-</script></body></html>
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>하천 DEM 분석 시스템</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Malgun Gothic,sans-serif;color:#111827;background:#eef2f7}
+#map{position:absolute;inset:0;background:#dbeafe}
+.panel{position:absolute;z-index:800;background:rgba(255,255,255,.95);border:1px solid #dbe3ef;border-radius:14px;box-shadow:0 14px 42px #0002;backdrop-filter:blur(10px)}
+.left{top:40px;left:82px;width:285px;max-height:calc(100vh - 80px);overflow:auto}
+.right{top:40px;right:28px;width:335px;max-height:calc(100vh - 80px);overflow:auto}
+.head{padding:16px 18px;font-size:17px;font-weight:900;border-bottom:1px solid #e5e7eb}
+.body{padding:14px 18px}
+.search{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:10px;font-weight:700}
+.group{margin-top:14px}
+.groupTitle{font-weight:900;margin:10px 0;color:#374151}
+.river{display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;border-radius:8px;font-size:14px}
+.river:hover,.river.active{background:#dbeafe;color:#1d4ed8;font-weight:900}
+.chk{margin-left:auto;width:16px;height:16px;border:1px solid #cbd5e1;border-radius:4px}
+.river.active .chk{background:#2563eb;border-color:#2563eb}
+.apply{width:100%;padding:13px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:900;margin-top:14px}
+.toolbar{position:absolute;left:20px;top:150px;z-index:820;background:white;border-radius:8px;box-shadow:0 8px 22px #0002;overflow:hidden}
+.tool{width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid #e5e7eb;cursor:pointer;font-size:20px}
+.tool:hover,.tool.active{background:#2563eb;color:#fff}
+.label{font-size:14px;font-weight:900;color:#374151;margin-top:14px}
+select,input[type=text]{width:100%;padding:11px;border:1px solid #cfd8e3;border-radius:9px;margin-top:7px;font-weight:700}
+.row{display:flex;align-items:center;justify-content:space-between;margin-top:15px;font-weight:800}
+.switch{position:relative;width:43px;height:24px;border-radius:999px;background:#d1d5db;cursor:pointer}
+.switch.on{background:#2563eb}
+.switch:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:white;border-radius:50%;transition:.15s}
+.switch.on:after{left:22px}
+.rangeRow{display:grid;grid-template-columns:1fr 46px;gap:10px;align-items:center;margin-top:7px}
+input[type=range]{width:100%;accent-color:#2563eb}
+.legend{position:absolute;z-index:805;left:50%;bottom:28px;transform:translateX(-50%);width:560px;background:rgba(255,255,255,.94);padding:10px;border-radius:10px;box-shadow:0 10px 30px #0002}
+.bar{height:14px;border-radius:999px;background:linear-gradient(90deg,blue,cyan,lime,yellow,red)}
+.legendText{display:flex;justify-content:space-between;font-size:12px;font-weight:900;margin-top:5px}
+.status{position:absolute;right:28px;bottom:24px;z-index:806;background:rgba(255,255,255,.94);border-radius:9px;padding:10px 14px;font-weight:900;box-shadow:0 10px 30px #0002}
+.log{position:absolute;left:24px;bottom:24px;z-index:806;width:360px;background:#111827;color:#4ade80;border-radius:14px;padding:12px 14px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;line-height:1.55}
+.infoGrid{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:14px;margin-top:10px}
+.infoGrid div:nth-child(odd){color:#6b7280;font-weight:800}
+.infoGrid div:nth-child(even){font-weight:900}
+.hidden{display:none}
+hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
+</style>
+</head>
+<body>
+<input id="demFile" type="file" accept=".tif,.tiff" style="display:none">
+<div id="map"></div>
+
+<div class="toolbar">
+  <div class="tool active">⌖</div>
+  <div class="tool" onclick="map.zoomIn()">+</div>
+  <div class="tool" onclick="map.zoomOut()">−</div>
+  <div class="tool" onclick="goCurrent()">⌾</div>
+  <div class="tool" onclick="toggleFull()">⛶</div>
+  <div class="tool" onclick="goCurrent()">●</div>
+</div>
+
+<div class="panel left">
+  <div class="head">지역 / 하천 선택</div>
+  <div class="body">
+    <input class="search" id="search" placeholder="지역 또는 하천 검색..." oninput="renderRivers()">
+    <div id="riverList"></div>
+    <button class="apply" onclick="applySelectedRiver()">적용</button>
+  </div>
+</div>
+
+<div class="panel right">
+  <div class="head">지도 설정 <span style="float:right;cursor:pointer" onclick="toggleRight()">×</span></div>
+  <div class="body">
+    <div class="label">지도 표시</div>
+    <div class="row">측척 표시 <span id="scaleSw" class="switch on" onclick="toggleSwitch(this,'scale')"></span></div>
+    <div class="row">범례 표시 <span id="legendSw" class="switch on" onclick="toggleSwitch(this,'legend')"></span></div>
+    <div class="row">좌표 표시 <span id="coordSw" class="switch on" onclick="toggleSwitch(this,'coord')"></span></div>
+
+    <hr>
+    <div class="label">레이어</div>
+    <div class="row">DEM Overlay <span id="demSw" class="switch on" onclick="toggleSwitch(this,'dem')"></span></div>
+    <div class="rangeRow"><input id="demOpacity" type="range" min="10" max="100" value="65" oninput="setOverlayOpacity()"><span id="demOpText">65%</span></div>
+
+    <div class="row">Heat Map <span id="heatSw" class="switch on" onclick="toggleSwitch(this,'heat')"></span></div>
+    <div class="bar"></div>
+    <div class="rangeRow"><input id="heatOpacity" type="range" min="10" max="100" value="60" oninput="setOverlayOpacity()"><span id="heatOpText">60%</span></div>
+
+    <div class="row">하천 이름 표시 <span id="nameSw" class="switch on" onclick="toggleSwitch(this,'name')"></span></div>
+
+    <div class="label">기본 확대 레벨</div>
+    <div class="rangeRow"><input id="zoomRange" type="range" min="7" max="16" value="9" oninput="zoomText.innerText=this.value"><span id="zoomText">9</span></div>
+
+    <hr>
+    <div class="label">DEM 정보</div>
+    <div class="infoGrid">
+      <div>현재 좌표</div><div id="curCoord">-</div>
+      <div>해발 고도</div><div id="curZ">-</div>
+      <div>최고 고도</div><div id="maxZ">-</div>
+      <div>최저 고도</div><div id="minZ">-</div>
+      <div>평균 고도</div><div id="avgZ">-</div>
+      <div>DEM 파일</div><div id="demName">-</div>
+      <div>해상도</div><div id="demRes">-</div>
+    </div>
+  </div>
+</div>
+
+<div class="legend" id="legendBox">
+  <div class="bar"></div>
+  <div class="legendText"><span>낮음 Low</span><span>고도(m)</span><span>높음 High</span></div>
+</div>
+
+<div class="status" id="status">EPSG:3857 &nbsp; X: - &nbsp; Y: - &nbsp; 레벨: 9</div>
+<div class="log" id="log">File → DEM 열기 또는 Ctrl+O 로 DEM을 선택하세요.</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script>
+proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
+
+const REGIONS={
+"한강권역":[["한강",37.526,126.934,11],["남한강",37.298,127.634,11],["북한강",37.921,127.730,11],["섬강",37.295,127.922,12],["임진강",37.888,126.741,11],["홍천강",37.692,127.882,11]],
+"낙동강권역":[["낙동강",35.848,128.520,11],["금호강",35.882,128.624,12],["영강",36.600,128.180,12],["위천",35.918,128.268,12],["감천",36.121,128.119,12]],
+"금강권역":[["금강",36.470,127.080,11],["미호강",36.643,127.489,12],["갑천",36.351,127.378,12],["삽교천",36.777,126.824,12]],
+"영산강권역":[["영산강",35.017,126.744,11],["섬진강",35.186645,127.622747,12],["지석강",35.035,126.922,12],["탐진강",34.642,126.772,12],["보성강",35.079,127.374,12]]
+};
+
+let map, baseLayer, marker;
+let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
+let demOverlay=null, heatOverlay=null;
+let selectedRiver=null;
+
+function initMap(){
+  map=L.map("map",{zoomControl:false}).setView([35.0977,127.8801],9);
+  const key=localStorage.getItem("vworld_key")||"";
+  const url=key?`https://api.vworld.kr/req/wmts/1.0.0/${key}/Base/{z}/{y}/{x}.png`:"https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+  baseLayer=L.tileLayer(url,{maxZoom:19,attribution:key?"VWorld":"OSM"}).addTo(map);
+  map.on("mousemove",e=>{
+    status.innerHTML=`EPSG:3857 &nbsp; X: ${e.latlng.lng.toFixed(4)} &nbsp; Y: ${e.latlng.lat.toFixed(4)} &nbsp; 레벨: ${map.getZoom()}`;
+  });
+  map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
+  renderRivers();
+}
+function renderRivers(){
+  const q=(search.value||"").trim();
+  riverList.innerHTML="";
+  Object.entries(REGIONS).forEach(([g,arr])=>{
+    const group=document.createElement("div");group.className="group";
+    const title=document.createElement("div");title.className="groupTitle";title.textContent="⌄ "+g;group.appendChild(title);
+    arr.filter(r=>!q||g.includes(q)||r[0].includes(q)).forEach(r=>{
+      const d=document.createElement("div");d.className="river";d.innerHTML=`<span>›</span><span>${r[0]}</span><span class="chk"></span>`;
+      d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;};
+      group.appendChild(d);
+    });
+    riverList.appendChild(group);
+  });
+}
+function applySelectedRiver(){
+  if(!selectedRiver){alert("하천을 선택하세요.");return}
+  map.setView([selectedRiver[1],selectedRiver[2]],selectedRiver[3]);
+  if(marker)marker.setLatLng([selectedRiver[1],selectedRiver[2]]);else marker=L.marker([selectedRiver[1],selectedRiver[2]]).addTo(map);
+  log.innerText=`선택된 하천: ${selectedRiver[0]}\n좌표: ${selectedRiver[1]}, ${selectedRiver[2]}`;
+  samplePoint(selectedRiver[1],selectedRiver[2]);
+}
+function openDemFile(){demFile.click();}
+demFile.addEventListener("change",async e=>{
+  const f=e.target.files[0]; if(!f)return;
+  log.innerText="DEM 로드 중...";
+  demName.innerText=f.name;
+  try{
+    const t=await GeoTIFF.fromArrayBuffer(await f.arrayBuffer());
+    const img=await t.getImage();
+    width=img.getWidth();height=img.getHeight();
+    const tie=img.getTiePoints()[0];const s=img.getFileDirectory().ModelPixelScale;
+    originX=tie.x;originY=tie.y;pixelX=s[0];pixelY=-s[1];
+    minX=Math.min(originX,originX+pixelX*width);maxX=Math.max(originX,originX+pixelX*width);
+    minY=Math.min(originY,originY+pixelY*height);maxY=Math.max(originY,originY+pixelY*height);
+    raster=(await img.readRasters({samples:[0]}))[0];
+    const vals=Array.from(raster).filter(v=>Number.isFinite(Number(v))).map(Number);
+    const mn=Math.min(...vals), mx=Math.max(...vals), av=vals.reduce((a,b)=>a+b,0)/vals.length;
+    minZ.innerText=mn.toFixed(1)+" m"; maxZ.innerText=mx.toFixed(1)+" m"; avgZ.innerText=av.toFixed(1)+" m"; demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+    drawOverlays();
+    log.innerText=`DEM 로드 완료\n파일: ${f.name}\n크기: ${width} x ${height}`;
+  }catch(err){log.innerText="DEM 로드 실패: "+err.message;}
+});
+function valueAt(r,c){if(!raster||r<0||c<0||r>=height||c>=width)return null;const v=Number(raster[r*width+c]);return Number.isFinite(v)?v:null}
+function readDem(lat,lon){
+  const p=proj4("EPSG:4326","EPSG:5179",[lon,lat]);const x=p[0],y=p[1];
+  if(x<minX||x>=maxX||y<minY||y>=maxY)return null;
+  const r=Math.floor((originY-y)/Math.abs(pixelY));const c=Math.floor((x-originX)/pixelX);
+  return {z:valueAt(r,c),r,c,x,y};
+}
+function samplePoint(lat,lon){
+  curCoord.innerText=lon.toFixed(5)+", "+lat.toFixed(5);
+  if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
+  if(!raster){curZ.innerText="-";return}
+  const d=readDem(lat,lon);
+  if(!d||d.z===null){curZ.innerText="범위 밖";return}
+  curZ.innerText=d.z.toFixed(2)+" m";
+  log.innerText=`좌표 샘플\n위도: ${lat.toFixed(7)}\n경도: ${lon.toFixed(7)}\nrow: ${d.r}\ncol: ${d.c}\nDEM: ${d.z.toFixed(3)} m`;
+}
+function color(v,alpha){
+  if(v<5)return[0,0,255,alpha]; if(v<20)return[0,200,255,alpha]; if(v<50)return[0,255,0,alpha]; if(v<100)return[255,255,0,alpha]; return[255,0,0,alpha];
+}
+function drawOverlays(){
+  if(!raster)return;
+  if(demOverlay)map.removeLayer(demOverlay); if(heatOverlay)map.removeLayer(heatOverlay);
+  const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
+  const ctx=canvas.getContext("2d");const img=ctx.createImageData(width,height);
+  const alpha=Math.round(Number(heatOpacity.value)/100*255);
+  for(let i=0;i<raster.length;i++){const c=color(Number(raster[i]),alpha),p=i*4;img.data[p]=c[0];img.data[p+1]=c[1];img.data[p+2]=c[2];img.data[p+3]=c[3];}
+  ctx.putImageData(img,0,0);
+  function to4326(x,y){const p=proj4("EPSG:5179","EPSG:4326",[x,y]);return[p[1],p[0]]}
+  const nw=to4326(minX,maxY),se=to4326(maxX,minY),bounds=[[se[0],nw[1]],[nw[0],se[1]]];
+  heatOverlay=L.imageOverlay(canvas.toDataURL(),bounds,{opacity:Number(heatOpacity.value)/100}).addTo(map);
+  demOverlay=heatOverlay;
+  map.fitBounds(bounds);
+  setOverlayOpacity();
+}
+function setOverlayOpacity(){
+  demOpText.innerText=demOpacity.value+"%"; heatOpText.innerText=heatOpacity.value+"%";
+  if(heatOverlay)heatOverlay.setOpacity(heatSw.classList.contains("on")?Number(heatOpacity.value)/100:0);
+}
+function toggleSwitch(el,type){
+  el.classList.toggle("on");
+  if(type==="legend")legendBox.style.display=el.classList.contains("on")?"block":"none";
+  if(type==="coord")status.style.display=el.classList.contains("on")?"block":"none";
+  if(type==="heat")setOverlayOpacity();
+  if(type==="dem")setOverlayOpacity();
+}
+function toggleRight(){document.querySelector(".right").classList.toggle("hidden")}
+function toggleFull(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen()}
+function goCurrent(){navigator.geolocation?.getCurrentPosition(p=>map.setView([p.coords.latitude,p.coords.longitude],15),e=>alert(e.message))}
+initMap();
+</script>
+</body>
+</html>

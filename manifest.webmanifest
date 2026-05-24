@@ -1,1 +1,9 @@
-{"name":"하천 DEM 분석 시스템","short_name":"RiverDEM","start_url":"./index.html","display":"standalone","background_color":"#eef2f7","theme_color":"#2563eb","icons":[]}
+{
+  "name": "하천 DEM 분석 시스템",
+  "short_name": "RiverDEM",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#2563eb",
+  "icons": []
+}
