@@ -9,10 +9,12 @@
 html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,Malgun Gothic,sans-serif;color:#111827;background:#eef2f7}
 #map{position:absolute;inset:0 0 42px 0;background:#dbeafe}
 .panel{position:absolute;z-index:800;background:rgba(255,255,255,.96);border:1px solid #dbe3ef;border-radius:14px;box-shadow:0 14px 42px #0002;backdrop-filter:blur(10px)}
-.left{top:34px;left:0;width:265px;height:calc(100vh - 76px);border-radius:0 14px 14px 0;overflow:auto}
-.right{top:44px;right:24px;width:330px;max-height:calc(100vh - 104px);overflow:auto}
+.left{top:34px;left:0;width:265px;height:calc(100vh - 76px);border-radius:0 14px 14px 0;overflow:visible;transition:all .2s ease}
+.right{top:44px;right:24px;width:330px;max-height:calc(100vh - 104px);overflow:visible;transition:all .2s ease}
 .head{padding:15px 18px;font-size:17px;font-weight:900;border-bottom:1px solid #e5e7eb}
 .body{padding:14px 18px}
+.left .body{height:calc(100% - 54px);overflow:auto}
+.right .body{max-height:calc(100vh - 158px);overflow:auto}
 .search,select,input[type=text]{width:100%;padding:11px;border:1px solid #cfd8e3;border-radius:9px;margin-top:7px;font-weight:700;background:white}
 .group{margin-top:12px}
 .groupTitle{font-weight:900;margin:10px 0;color:#374151}
@@ -21,10 +23,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Segoe UI,M
 .chk{margin-left:auto;width:16px;height:16px;border:1px solid #cbd5e1;border-radius:4px}
 .river.active .chk{background:#2563eb;border-color:#2563eb}
 .apply{width:100%;padding:12px;border:0;border-radius:9px;background:#2563eb;color:white;font-weight:900;margin-top:14px}
-.collapseBtn{position:absolute;top:10px;right:-34px;width:34px;height:34px;border:1px solid #dbe3ef;background:white;border-radius:0 8px 8px 0;z-index:810;cursor:pointer;font-weight:900}
-.left.collapsed{width:0;border:none;overflow:visible}
+.collapseBtn{position:absolute;top:10px;right:-34px;width:34px;height:42px;border:1px solid #dbe3ef;background:white;border-radius:0 8px 8px 0;z-index:9999;cursor:pointer;font-weight:900;font-size:18px;box-shadow:0 6px 16px #0002}
+.left.collapsed{width:0!important;border:none;overflow:visible;box-shadow:none}
 .left.collapsed .head,.left.collapsed .body{display:none}
-.right.collapsed{width:0;border:none;overflow:visible;right:0}
+.right.collapsed{width:0!important;border:none;overflow:visible;right:0;box-shadow:none}
 .right.collapsed .head,.right.collapsed .body{display:none}
 .right .collapseBtn{left:-34px;right:auto;border-radius:8px 0 0 8px}
 .toolbar{position:absolute;left:18px;top:152px;z-index:820;background:white;border-radius:8px;box-shadow:0 8px 22px #0002;overflow:hidden}
@@ -235,6 +237,12 @@ function renderRivers(){
     filtered.forEach(r=>{
       const d=document.createElement("div");d.className="river";d.innerHTML=`<span>›</span><span>${r[0]}</span><span class="chk"></span>`;
       d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;};
+      d.ondblclick=()=>{
+        document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));
+        d.classList.add("active");
+        selectedRiver=r;
+        applySelectedRiver();
+      };
       group.appendChild(d);
     });
     riverList.appendChild(group);
