@@ -1,18 +1,40 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
-
+let mainWindow;
 function createWindow(){
-
-const win = new BrowserWindow({
-width:1600,
-height:900,
-webPreferences:{
-nodeIntegration:true,
-contextIsolation:false
+  mainWindow=new BrowserWindow({
+    width:1500,height:950,minWidth:1100,minHeight:750,
+    title:'RiverDEM',
+    webPreferences:{nodeIntegration:false,contextIsolation:true}
+  });
+  mainWindow.loadFile(path.join(__dirname,'index.html'));
+  const template=[
+    {label:'File',submenu:[
+      {label:'DEM 열기',accelerator:'Ctrl+O',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}},
+      {type:'separator'},{label:'종료',click(){app.quit()}}
+    ]},
+    {label:'Edit',submenu:[
+      {label:'VWorld API Key 설정',click(){mainWindow.webContents.executeJavaScript('setVWorldKey()')}},
+      {label:'설정 초기화',click(){mainWindow.webContents.executeJavaScript('localStorage.clear();location.reload();')}}
+    ]},
+    {label:'View',submenu:[
+      {label:'하천 선택 패널',click(){mainWindow.webContents.executeJavaScript('toggleLeft()')}},
+      {label:'지도 설정 패널',click(){mainWindow.webContents.executeJavaScript('toggleRight()')}},
+      {label:'전체화면',accelerator:'F11',click(){mainWindow.setFullScreen(!mainWindow.isFullScreen())}},
+      {label:'새로고침',accelerator:'F5',click(){mainWindow.reload()}}
+    ]},
+    {label:'Setting',submenu:[
+      {label:'Heat Map ON/OFF',click(){mainWindow.webContents.executeJavaScript("document.getElementById('heatSw').click()")}},
+      {label:'DEM Overlay ON/OFF',click(){mainWindow.webContents.executeJavaScript("document.getElementById('demSw').click()")}},
+      {label:'VWorld 기본지도',click(){mainWindow.webContents.executeJavaScript("baseMapSelect.value='vworld-base';setBaseMap()")}},
+      {label:'VWorld 위성지도',click(){mainWindow.webContents.executeJavaScript("baseMapSelect.value='vworld-satellite';setBaseMap()")}},
+      {label:'OpenStreetMap',click(){mainWindow.webContents.executeJavaScript("baseMapSelect.value='osm';setBaseMap()")}}
+    ]},
+    {label:'Help',submenu:[
+      {label:'버전 정보',click(){mainWindow.webContents.executeJavaScript('alert("River DEM Desktop v4")')}}
+    ]}
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
-});
-
-win.loadFile('index.html');
-}
-
 app.whenReady().then(createWindow);
+app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
