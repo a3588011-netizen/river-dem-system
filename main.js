@@ -23,10 +23,11 @@ function createWindow(){
     ]},
     {label:'Setting',submenu:[
       {label:'Heat Map ON/OFF',click(){mainWindow.webContents.executeJavaScript("document.getElementById('heatSw').click()")}},
+      {label:'DEM Overlay ON/OFF',click(){mainWindow.webContents.executeJavaScript("document.getElementById('demSw').click()")}},
       {label:'DEM 열기',click(){mainWindow.webContents.executeJavaScript('openDemFile()')}}
     ]},
     {label:'Help',submenu:[
-      {label:'버전 정보',click(){mainWindow.webContents.executeJavaScript('alert("River DEM Desktop v2")')}}
+      {label:'버전 정보',click(){mainWindow.webContents.executeJavaScript('alert("River DEM Desktop v3")')}}
     ]}
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
