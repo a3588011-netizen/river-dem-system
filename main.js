@@ -1,57 +1,151 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, Menu } = require('electron');
 const path = require('path');
 
-let splash;
 let mainWindow;
 
 function createWindow() {
-  splash = new BrowserWindow({
-    width: 420,
-    height: 240,
-    frame: false,
-    alwaysOnTop: true,
-    resizable: false,
-    center: true,
-    backgroundColor: '#111827'
-  });
-
-  splash.loadURL(`data:text/html;charset=utf-8,
-    <html>
-      <body style="margin:0;background:#111827;color:#4ade80;font-family:Segoe UI, sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;">
-        <div style="text-align:center;">
-          <div style="font-size:28px;font-weight:900;color:white;">River DEM</div>
-          <div style="margin-top:16px;font-size:15px;">실행 중...</div>
-          <div style="margin-top:8px;font-size:13px;color:#9ca3af;">지도 / DEM 엔진 로드 중</div>
-        </div>
-      </body>
-    </html>
-  `);
 
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 850,
-    minWidth: 900,
-    minHeight: 650,
-    title: 'River DEM',
-    show: false,
+    width: 1400,
+    height: 900,
+    minWidth: 1000,
+    minHeight: 700,
+    title: '하천 DEM 분석 시스템',
+    backgroundColor: '#f3f4f6',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile('index.html');
 
-  mainWindow.once('ready-to-show', () => {
-    setTimeout(() => {
-      if (splash) splash.close();
-      mainWindow.show();
-    }, 800);
-  });
+  // 메뉴
+  const template = [
+
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'DEM 열기',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              document.getElementById('demFile').click()
+            `);
+          }
+        },
+
+        { type: 'separator' },
+
+        {
+          label: '종료',
+          click() {
+            app.quit();
+          }
+        }
+      ]
+    },
+
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          label: '현재 DEM 제거',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              if(window.ras){
+                ras = null;
+                alert('DEM 제거 완료');
+              }
+            `);
+          }
+        },
+
+        {
+          label: '설정 초기화',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              localStorage.clear();
+              location.reload();
+            `);
+          }
+        }
+      ]
+    },
+
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: '전체화면',
+          click() {
+            mainWindow.setFullScreen(
+              !mainWindow.isFullScreen()
+            );
+          }
+        },
+
+        {
+          label: '새로고침',
+          click() {
+            mainWindow.reload();
+          }
+        }
+      ]
+    },
+
+    {
+      label: 'Setting',
+      submenu: [
+        {
+          label: 'Heatmap ON/OFF',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              if(typeof heat !== 'undefined' && heat){
+                if(map.hasLayer(heat)){
+                  map.removeLayer(heat);
+                } else {
+                  heat.addTo(map);
+                }
+              }
+            `);
+          }
+        },
+
+        {
+          label: 'UI 초기화',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              location.reload();
+            `);
+          }
+        }
+      ]
+    },
+
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: '버전 정보',
+          click() {
+            mainWindow.webContents.executeJavaScript(`
+              alert('River DEM v1.0');
+            `);
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });
