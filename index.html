@@ -194,6 +194,38 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
 .measureActionBtn.full{grid-column:1/-1}
 
+
+#print3dModal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+  z-index:999999;align-items:center;justify-content:center
+}
+#print3dModal .modalBox{
+  width:520px;max-width:calc(100vw - 40px);max-height:calc(100vh - 60px);
+  overflow:auto;background:white;border-radius:14px;padding:22px;
+  box-shadow:0 12px 40px rgba(0,0,0,.35)
+}
+#print3dModal h2{margin:0 0 6px 0;font-size:22px}
+.print3dHelp{font-size:12px;color:#64748b;line-height:1.5;margin-bottom:12px}
+.print3dGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.print3dField label{display:block;font-size:11px;font-weight:900;color:#475569;margin-bottom:5px}
+.print3dField input,.print3dField select{
+  width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;
+  border-radius:8px;font-size:12px;font-weight:800;background:white;color:#0f172a
+}
+.print3dActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.print3dBtn{
+  border:0;border-radius:9px;padding:10px 8px;font-size:12px;font-weight:900;
+  cursor:pointer;background:#0f766e;color:white
+}
+.print3dBtn.secondary{background:#475569}
+.print3dBtn.danger{background:#b91c1c}
+.print3dBtn.full{grid-column:1/-1;background:#2563eb}
+.print3dInfo{
+  margin-top:12px;padding:10px;border-radius:9px;background:#f1f5f9;color:#334155;
+  font-size:11px;font-weight:800;line-height:1.55;white-space:pre-line
+}
+.print3dWarn{margin-top:9px;font-size:11px;line-height:1.45;color:#9a3412}
+
 </style>
 </head>
 <body>
@@ -493,6 +525,58 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 </div>
 
 
+
+<div id="print3dModal">
+  <div class="modalBox">
+    <h2>3D 지형 모형 만들기</h2>
+    <div class="print3dHelp">
+      지도에서 사각형 영역을 선택한 뒤 DEM 고도를 실제 비율 기반 3D 지형으로 변환해 STL 파일로 내보냅니다.
+    </div>
+
+    <div class="print3dActions" style="margin-top:0">
+      <button class="print3dBtn full" onclick="startPrint3dAreaSelection()">지도에서 출력 영역 선택</button>
+      <button class="print3dBtn secondary" onclick="clearPrint3dSelection()">선택 영역 지우기</button>
+    </div>
+
+    <div class="print3dGrid" style="margin-top:12px">
+      <div class="print3dField">
+        <label>모형 가로 크기 (mm)</label>
+        <input id="print3dWidthMm" type="number" value="180" min="20" max="500" step="1" oninput="updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>바닥 두께 (mm)</label>
+        <input id="print3dBaseMm" type="number" value="5" min="1" max="50" step="0.5" oninput="updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>Z축 과장 배율</label>
+        <input id="print3dZExag" type="number" value="2" min="0.1" max="20" step="0.1" oninput="updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>메시 정밀도</label>
+        <select id="print3dDetail" onchange="updatePrint3dInfo()">
+          <option value="120">빠름 · 최대 120×120</option>
+          <option value="220" selected>표준 · 최대 220×220</option>
+          <option value="320">정밀 · 최대 320×320</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="print3dInfo" class="print3dInfo">DEM을 열고 출력 영역을 선택하세요.</div>
+
+    <div class="print3dWarn">
+      STL 정밀도는 원본 DEM 해상도를 넘지 않습니다. 90 m DEM을 고해상도로 보간해도 실제 지형 정보가 더 정밀해지는 것은 아닙니다.
+    </div>
+
+    <div class="print3dActions">
+      <button class="print3dBtn secondary" onclick="closePrint3dModal()">닫기</button>
+      <button class="print3dBtn" onclick="exportPrint3dStl()">STL 생성</button>
+    </div>
+  </div>
+</div>
+
 <div id="vworldModal">
   <div class="modalBox">
     <h2>VWorld API Key 설정</h2>
@@ -588,6 +672,12 @@ let xySectionResult=null;
 let xySectionToken=0;
 let xySectionBusy=false;
 
+// 3D 프린팅
+let print3dLayerGroup=null;
+let print3dSelection=null;
+let print3dDraftLayer=null;
+let print3dBusy=false;
+
 // 프로젝트 저장/불러오기
 const RIVERDEM_PROJECT_FORMAT="RiverDEM Project";
 const RIVERDEM_PROJECT_VERSION=1;
@@ -660,6 +750,7 @@ function initMap(){
   measurementLayerGroup=L.layerGroup().addTo(map);
   checkpointLayerGroup=L.layerGroup().addTo(map);
   xySectionLayerGroup=L.layerGroup().addTo(map);
+  print3dLayerGroup=L.layerGroup().addTo(map);
   validationLayer=L.layerGroup().addTo(map);
   loadValidationRecords();
   loadFavoriteRivers();
@@ -2753,7 +2844,8 @@ function measureModeLabel(mode){
     area:"면적 측정",
     checkpoint:"체크포인트",
     section:"X/Y 단면 분석",
-    delete:"개별 지우기"
+    delete:"개별 지우기",
+    print3d:"3D 출력 영역 선택"
   }[mode]||"측정";
 }
 
@@ -2808,8 +2900,10 @@ function toggleMeasureMode(mode){
     return;
   }
 
-  if(mode==="section"&&!demImage){
-    alert("X/Y 단면 분석은 DEM을 먼저 열어야 합니다.");
+  if((mode==="section"||mode==="print3d")&&!demImage){
+    alert(mode==="section"
+      ?"X/Y 단면 분석은 DEM을 먼저 열어야 합니다."
+      :"3D 지형 모형은 DEM을 먼저 열어야 합니다.");
     return;
   }
 
@@ -2833,6 +2927,8 @@ function toggleMeasureMode(mode){
     status.innerText="체크포인트 모드 ON\n지도를 클릭할 때마다 번호 체크포인트가 추가됩니다.\n● 버튼을 다시 누르면 모드가 취소됩니다.";
   }else if(mode==="section"){
     status.innerText="X/Y 단면 분석 모드 ON\n지도에서 한 점을 클릭하면 X 횡단면과 Y 종단면을 동시에 계산합니다.\nXY 버튼을 다시 누르면 모드가 취소됩니다.";
+  }else if(mode==="print3d"){
+    status.innerText="3D 출력 영역 선택 모드 ON\n사각형의 첫 번째 모서리와 반대쪽 모서리를 차례로 클릭하세요.";
   }else{
     status.innerText="개별 지우기 모드 ON\n지도에서 길이선·면적·체크포인트·X/Y 단면선을 클릭하면 해당 항목만 삭제됩니다.\n⌫ 버튼을 다시 누르면 모드가 취소됩니다.";
   }
@@ -2900,7 +2996,7 @@ function primaryAreaLabel(m2){
 }
 
 function updateMeasurementPreview(mouseLatLng=null){
-  if(!(measureMode==="length"||measureMode==="area"))return;
+  if(!(measureMode==="length"||measureMode==="area"||measureMode==="print3d"))return;
   if(!measurePoints.length)return;
 
   const pts=mouseLatLng?[...measurePoints,mouseLatLng]:[...measurePoints];
@@ -2910,7 +3006,32 @@ function updateMeasurementPreview(mouseLatLng=null){
     measureDraftLayer=null;
   }
 
-  if(measureMode==="length"){
+  if(measureMode==="print3d"){
+    const a=measurePoints[0];
+    const b=mouseLatLng||measurePoints[measurePoints.length-1];
+
+    if(!a||!b)return;
+
+    measureDraftLayer=L.rectangle(
+      L.latLngBounds(a,b),
+      {
+        color:"#ea580c",
+        weight:3,
+        dashArray:"8 5",
+        fill:true,
+        fillColor:"#fb923c",
+        fillOpacity:.12,
+        interactive:false
+      }
+    ).addTo(map);
+
+    const live=document.getElementById("measureLive");
+    if(live){
+      const bounds=L.latLngBounds(a,b);
+      const dims=print3dGroundDimensions(bounds);
+      live.innerText=`3D 영역: ${dims.widthM.toFixed(1)} × ${dims.heightM.toFixed(1)} m`;
+    }
+  }else if(measureMode==="length"){
     measureDraftLayer=L.polyline(pts,{
       color:"#2563eb",
       weight:3,
@@ -2953,6 +3074,36 @@ async function handleMeasurementMapClick(latlng){
 
   if(measureMode==="section"){
     await analyzeXYSectionAt(latlng);
+    return;
+  }
+
+  if(measureMode==="print3d"){
+    measurePoints.push(L.latLng(latlng.lat,latlng.lng));
+
+    if(measurePoints.length===1){
+      updateMeasurementPreview();
+      const status=document.getElementById("measureStatus");
+      if(status)status.innerText="3D 출력 영역 첫 모서리 지정 완료\n반대쪽 모서리를 클릭하세요.";
+      return;
+    }
+
+    const a=measurePoints[0];
+    const b=measurePoints[1];
+    measurePoints=[];
+
+    if(measureDraftLayer&&map){
+      map.removeLayer(measureDraftLayer);
+      measureDraftLayer=null;
+    }
+
+    setPrint3dSelection(L.latLngBounds(a,b));
+    measureMode=null;
+    syncMeasureModeUi();
+
+    const status=document.getElementById("measureStatus");
+    if(status)status.innerText="3D 출력 영역 선택 완료.";
+
+    openPrint3dModal();
     return;
   }
 
@@ -3093,7 +3244,7 @@ function bindMeasurementToolClick(layer,id){
       return;
     }
 
-    if(measureMode==="length"||measureMode==="area"||measureMode==="section"){
+    if(measureMode==="length"||measureMode==="area"||measureMode==="section"||measureMode==="print3d"){
       stopWorkLayerEvent(e);
 
       const ll=e?.latlng;
@@ -3117,7 +3268,7 @@ function bindXYSectionToolClick(layer){
       return;
     }
 
-    if(measureMode==="length"||measureMode==="area"||measureMode==="section"){
+    if(measureMode==="length"||measureMode==="area"||measureMode==="section"||measureMode==="print3d"){
       stopWorkLayerEvent(e);
 
       const ll=e?.latlng;
@@ -3156,6 +3307,7 @@ function bindCheckpointSectionClick(marker,cp){
       measureMode!=="length" &&
       measureMode!=="area" &&
       measureMode!=="section" &&
+      measureMode!=="print3d" &&
       measureMode!=="delete"
     ){
       return;
@@ -4964,6 +5116,8 @@ function buildRiverDemProject(){
       result:serializeXYSectionResult(xySectionResult)
     },
 
+    print3d:serializePrint3dProject(),
+
     validation:{
       mode:document.getElementById("validationMode")?.value||"simulation",
       standard:document.getElementById("validationStandard")?.value||"other",
@@ -5352,6 +5506,9 @@ async function loadRiverDemProject(event){
     // X/Y 단면
     restoreXYSection(project.xySection||{});
 
+    // 3D 출력 영역/설정
+    restorePrint3dProject(project.print3d||{});
+
     // 검증
     const savedValidation=project.validation||{};
 
@@ -5462,6 +5619,669 @@ window.saveRiverDemProject=saveRiverDemProject;
 window.openRiverDemProject=openRiverDemProject;
 window.loadRiverDemProject=loadRiverDemProject;
 
+
+
+
+function openPrint3dModal(){
+  const modal=document.getElementById("print3dModal");
+  if(!modal)return;
+
+  if(!demImage){
+    alert("DEM을 먼저 열어주세요.");
+    return;
+  }
+
+  updatePrint3dInfo();
+  modal.style.display="flex";
+}
+
+function closePrint3dModal(){
+  const modal=document.getElementById("print3dModal");
+  if(modal)modal.style.display="none";
+}
+
+function startPrint3dAreaSelection(){
+  if(!demImage){
+    alert("DEM을 먼저 열어주세요.");
+    return;
+  }
+
+  closePrint3dModal();
+  clearMeasureDraft();
+
+  measureMode="print3d";
+  syncMeasureModeUi();
+
+  const status=document.getElementById("measureStatus");
+  if(status){
+    status.innerText="3D 출력 영역 선택 모드 ON\n사각형의 첫 번째 모서리와 반대쪽 모서리를 차례로 클릭하세요.";
+  }
+}
+
+function clearPrint3dSelection(){
+  print3dSelection=null;
+
+  if(print3dLayerGroup){
+    print3dLayerGroup.clearLayers();
+  }
+
+  updatePrint3dInfo();
+}
+
+function setPrint3dSelection(bounds){
+  if(!bounds||!bounds.isValid?.())return;
+
+  print3dSelection=L.latLngBounds(
+    bounds.getSouthWest(),
+    bounds.getNorthEast()
+  );
+
+  if(print3dLayerGroup){
+    print3dLayerGroup.clearLayers();
+
+    L.rectangle(print3dSelection,{
+      color:"#ea580c",
+      weight:4,
+      fill:true,
+      fillColor:"#fb923c",
+      fillOpacity:.10
+    })
+      .bindTooltip("3D 출력 영역",{className:"measureTooltip"})
+      .addTo(print3dLayerGroup);
+  }
+
+  updatePrint3dInfo();
+}
+
+function print3dGroundDimensions(bounds){
+  if(!bounds||!map)return {widthM:0,heightM:0};
+
+  const sw=bounds.getSouthWest();
+  const ne=bounds.getNorthEast();
+  const midLat=(sw.lat+ne.lat)/2;
+  const midLon=(sw.lng+ne.lng)/2;
+
+  const widthM=map.distance(
+    L.latLng(midLat,sw.lng),
+    L.latLng(midLat,ne.lng)
+  );
+
+  const heightM=map.distance(
+    L.latLng(sw.lat,midLon),
+    L.latLng(ne.lat,midLon)
+  );
+
+  return {widthM,heightM};
+}
+
+function print3dWindowFromBounds(bounds){
+  if(!bounds||!demImage)return null;
+
+  const sw=bounds.getSouthWest();
+  const ne=bounds.getNorthEast();
+  const nw=L.latLng(ne.lat,sw.lng);
+  const se=L.latLng(sw.lat,ne.lng);
+
+  const nativePoints=[sw,se,nw,ne].map(p=>
+    wgs84ToNative(p.lng,p.lat)
+  );
+
+  const cols=[];
+  const rows=[];
+
+  for(const p of nativePoints){
+    const x=Number(p[0]);
+    const y=Number(p[1]);
+
+    if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+
+    cols.push((x-originX)/pixelX);
+    rows.push((originY-y)/Math.abs(pixelY));
+  }
+
+  if(cols.length!==4||rows.length!==4)return null;
+
+  let x1=Math.floor(Math.min(...cols));
+  let x2=Math.ceil(Math.max(...cols))+1;
+  let y1=Math.floor(Math.min(...rows));
+  let y2=Math.ceil(Math.max(...rows))+1;
+
+  x1=Math.max(0,Math.min(width-1,x1));
+  y1=Math.max(0,Math.min(height-1,y1));
+  x2=Math.max(x1+1,Math.min(width,x2));
+  y2=Math.max(y1+1,Math.min(height,y2));
+
+  if(x2-x1<2||y2-y1<2)return null;
+
+  return {
+    x1,y1,x2,y2,
+    width:x2-x1,
+    height:y2-y1
+  };
+}
+
+function print3dMeshPlan(){
+  if(!print3dSelection||!demImage)return null;
+
+  const win=print3dWindowFromBounds(print3dSelection);
+  if(!win)return null;
+
+  const maxGrid=Math.max(
+    20,
+    Math.min(
+      400,
+      Number(document.getElementById("print3dDetail")?.value||220)
+    )
+  );
+
+  const scale=Math.min(
+    1,
+    maxGrid/Math.max(win.width,win.height)
+  );
+
+  const cols=Math.max(2,Math.round(win.width*scale));
+  const rows=Math.max(2,Math.round(win.height*scale));
+
+  const dims=print3dGroundDimensions(print3dSelection);
+
+  const widthMm=Math.max(
+    20,
+    Math.min(
+      500,
+      Number(document.getElementById("print3dWidthMm")?.value||180)
+    )
+  );
+
+  const modelHeightMm=dims.widthM>0
+    ?widthMm*(dims.heightM/dims.widthM)
+    :0;
+
+  const triangles=
+    2*(cols-1)*(rows-1)+
+    4*(cols-1)+
+    4*(rows-1)+
+    2;
+
+  return {
+    win,
+    cols,
+    rows,
+    dims,
+    widthMm,
+    modelHeightMm,
+    triangles
+  };
+}
+
+function updatePrint3dInfo(){
+  const el=document.getElementById("print3dInfo");
+  if(!el)return;
+
+  if(!demImage){
+    el.innerText="DEM을 먼저 열어주세요.";
+    return;
+  }
+
+  if(!print3dSelection){
+    el.innerText="지도에서 출력 영역을 선택하세요.";
+    return;
+  }
+
+  const plan=print3dMeshPlan();
+  if(!plan){
+    el.innerText="선택 영역이 DEM 범위와 충분히 겹치지 않습니다.";
+    return;
+  }
+
+  const zExag=Math.max(
+    0.1,
+    Number(document.getElementById("print3dZExag")?.value||2)
+  );
+
+  const baseMm=Math.max(
+    1,
+    Number(document.getElementById("print3dBaseMm")?.value||5)
+  );
+
+  const scaleDenom=
+    plan.widthMm>0
+      ?plan.dims.widthM*1000/plan.widthMm
+      :0;
+
+  el.innerText=
+    `실제 영역: ${plan.dims.widthM.toFixed(1)} × ${plan.dims.heightM.toFixed(1)} m\n`+
+    `DEM Window: ${plan.win.width} × ${plan.win.height} px\n`+
+    `STL 메시: ${plan.cols} × ${plan.rows} · 약 ${plan.triangles.toLocaleString()} triangles\n`+
+    `모형 크기: ${plan.widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} mm\n`+
+    `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}\n`+
+    `Z축 과장: ${zExag.toFixed(2)}× · 바닥: ${baseMm.toFixed(1)} mm`;
+}
+
+function print3dFiniteStats(values){
+  let min=Infinity;
+  let max=-Infinity;
+  let sum=0;
+  let count=0;
+  let invalid=0;
+
+  for(let i=0;i<values.length;i++){
+    const v=Number(values[i]);
+
+    if(!isValidDemValue(v)){
+      invalid++;
+      continue;
+    }
+
+    if(v<min)min=v;
+    if(v>max)max=v;
+    sum+=v;
+    count++;
+  }
+
+  if(!count)return null;
+
+  return {
+    min,max,
+    avg:sum/count,
+    count,
+    invalid
+  };
+}
+
+async function readPrint3dRaster(plan){
+  const result=await demImage.readRasters({
+    samples:[0],
+    window:[
+      plan.win.x1,
+      plan.win.y1,
+      plan.win.x2,
+      plan.win.y2
+    ],
+    width:plan.cols,
+    height:plan.rows,
+    resampleMethod:"bilinear"
+  });
+
+  const band=result[0];
+  if(!band||band.length!==plan.cols*plan.rows){
+    throw new Error("3D 출력용 DEM Raster 크기가 올바르지 않습니다.");
+  }
+
+  const stats=print3dFiniteStats(band);
+  if(!stats){
+    throw new Error("선택 영역에 유효한 DEM 고도값이 없습니다.");
+  }
+
+  const heights=new Float32Array(band.length);
+
+  // NoData 구멍은 STL을 watertight로 유지하기 위해 선택 영역의 최저 유효 고도로 메움
+  for(let i=0;i<band.length;i++){
+    const v=Number(band[i]);
+    heights[i]=isValidDemValue(v)?v:stats.min;
+  }
+
+  return {
+    heights,
+    stats
+  };
+}
+
+function print3dNormal(a,b,c){
+  const ux=b[0]-a[0];
+  const uy=b[1]-a[1];
+  const uz=b[2]-a[2];
+
+  const vx=c[0]-a[0];
+  const vy=c[1]-a[1];
+  const vz=c[2]-a[2];
+
+  let nx=uy*vz-uz*vy;
+  let ny=uz*vx-ux*vz;
+  let nz=ux*vy-uy*vx;
+
+  const len=Math.hypot(nx,ny,nz)||1;
+
+  nx/=len;
+  ny/=len;
+  nz/=len;
+
+  return [nx,ny,nz];
+}
+
+function writePrint3dTriangle(view,offset,a,b,c){
+  const n=print3dNormal(a,b,c);
+
+  const vals=[
+    n[0],n[1],n[2],
+    a[0],a[1],a[2],
+    b[0],b[1],b[2],
+    c[0],c[1],c[2]
+  ];
+
+  for(let i=0;i<vals.length;i++){
+    view.setFloat32(offset,vals[i],true);
+    offset+=4;
+  }
+
+  view.setUint16(offset,0,true);
+  return offset+2;
+}
+
+function buildBinaryTerrainStl(heights,cols,rows,options){
+  const modelWidth=Number(options.widthMm);
+  const modelHeight=Number(options.heightMm);
+  const baseMm=Number(options.baseMm);
+  const minZ=Number(options.minZ);
+  const scaleMmPerMeter=Number(options.scaleMmPerMeter);
+  const zExag=Number(options.zExag);
+
+  if(
+    !Number.isFinite(modelWidth)||
+    !Number.isFinite(modelHeight)||
+    modelWidth<=0||
+    modelHeight<=0||
+    cols<2||
+    rows<2
+  ){
+    throw new Error("STL 메시 설정이 올바르지 않습니다.");
+  }
+
+  const topTriangles=2*(cols-1)*(rows-1);
+  const sideTriangles=4*(cols-1)+4*(rows-1);
+  const triangleCount=topTriangles+sideTriangles+2;
+
+  const buffer=new ArrayBuffer(84+triangleCount*50);
+  const view=new DataView(buffer);
+
+  const header="RiverDEM terrain STL";
+  for(let i=0;i<80;i++){
+    view.setUint8(i,i<header.length?header.charCodeAt(i):0);
+  }
+
+  view.setUint32(80,triangleCount,true);
+
+  const dx=modelWidth/(cols-1);
+  const dy=modelHeight/(rows-1);
+
+  const vertex=(r,c)=>{
+    const elev=Number(heights[r*cols+c]);
+    const z=
+      baseMm+
+      Math.max(0,elev-minZ)*
+      scaleMmPerMeter*
+      zExag;
+
+    return [
+      c*dx,
+      r*dy,
+      z
+    ];
+  };
+
+  let offset=84;
+
+  // top
+  for(let r=0;r<rows-1;r++){
+    for(let c=0;c<cols-1;c++){
+      const a=vertex(r,c);
+      const b=vertex(r,c+1);
+      const d=vertex(r+1,c+1);
+      const cc=vertex(r+1,c);
+
+      offset=writePrint3dTriangle(view,offset,a,b,cc);
+      offset=writePrint3dTriangle(view,offset,b,d,cc);
+    }
+  }
+
+  // north edge r=0
+  for(let c=0;c<cols-1;c++){
+    const a=vertex(0,c);
+    const b=vertex(0,c+1);
+    const a0=[a[0],a[1],0];
+    const b0=[b[0],b[1],0];
+
+    offset=writePrint3dTriangle(view,offset,a0,b,a);
+    offset=writePrint3dTriangle(view,offset,a0,b0,b);
+  }
+
+  // south edge r=rows-1
+  for(let c=0;c<cols-1;c++){
+    const a=vertex(rows-1,c);
+    const b=vertex(rows-1,c+1);
+    const a0=[a[0],a[1],0];
+    const b0=[b[0],b[1],0];
+
+    offset=writePrint3dTriangle(view,offset,a0,a,b);
+    offset=writePrint3dTriangle(view,offset,a0,b,b0);
+  }
+
+  // west edge c=0
+  for(let r=0;r<rows-1;r++){
+    const a=vertex(r,0);
+    const b=vertex(r+1,0);
+    const a0=[a[0],a[1],0];
+    const b0=[b[0],b[1],0];
+
+    offset=writePrint3dTriangle(view,offset,a0,a,b);
+    offset=writePrint3dTriangle(view,offset,a0,b,b0);
+  }
+
+  // east edge c=cols-1
+  for(let r=0;r<rows-1;r++){
+    const a=vertex(r,cols-1);
+    const b=vertex(r+1,cols-1);
+    const a0=[a[0],a[1],0];
+    const b0=[b[0],b[1],0];
+
+    offset=writePrint3dTriangle(view,offset,a0,b,a);
+    offset=writePrint3dTriangle(view,offset,a0,b0,b);
+  }
+
+  // bottom
+  const p00=[0,0,0];
+  const p10=[modelWidth,0,0];
+  const p01=[0,modelHeight,0];
+  const p11=[modelWidth,modelHeight,0];
+
+  offset=writePrint3dTriangle(view,offset,p00,p01,p10);
+  offset=writePrint3dTriangle(view,offset,p10,p01,p11);
+
+  if(offset!==buffer.byteLength){
+    throw new Error("STL 바이너리 크기 계산이 일치하지 않습니다.");
+  }
+
+  return {
+    buffer,
+    triangleCount
+  };
+}
+
+async function exportPrint3dStl(){
+  if(print3dBusy)return;
+
+  if(!demImage){
+    alert("DEM을 먼저 열어주세요.");
+    return;
+  }
+
+  if(!print3dSelection){
+    alert("먼저 3D 출력 영역을 선택해주세요.");
+    return;
+  }
+
+  const plan=print3dMeshPlan();
+  if(!plan){
+    alert("선택 영역이 너무 작거나 DEM 범위 밖입니다.");
+    return;
+  }
+
+  const widthMm=Number(document.getElementById("print3dWidthMm")?.value||180);
+  const baseMm=Number(document.getElementById("print3dBaseMm")?.value||5);
+  const zExag=Number(document.getElementById("print3dZExag")?.value||2);
+
+  if(!Number.isFinite(widthMm)||widthMm<20||widthMm>500){
+    alert("모형 가로 크기는 20~500 mm 범위로 입력해주세요.");
+    return;
+  }
+
+  if(!Number.isFinite(baseMm)||baseMm<1||baseMm>50){
+    alert("바닥 두께는 1~50 mm 범위로 입력해주세요.");
+    return;
+  }
+
+  if(!Number.isFinite(zExag)||zExag<=0||zExag>20){
+    alert("Z축 과장 배율은 0 초과 20 이하로 입력해주세요.");
+    return;
+  }
+
+  print3dBusy=true;
+
+  const info=document.getElementById("print3dInfo");
+  if(info)info.innerText="3D 출력용 DEM을 읽는 중입니다...";
+
+  try{
+    const data=await readPrint3dRaster(plan);
+
+    const scaleMmPerMeter=
+      plan.dims.widthM>0
+        ?widthMm/plan.dims.widthM
+        :0;
+
+    if(!Number.isFinite(scaleMmPerMeter)||scaleMmPerMeter<=0){
+      throw new Error("3D 모형 축척을 계산하지 못했습니다.");
+    }
+
+    if(info)info.innerText="STL 메시를 생성하는 중입니다...";
+
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const stl=buildBinaryTerrainStl(
+      data.heights,
+      plan.cols,
+      plan.rows,
+      {
+        widthMm,
+        heightMm:plan.modelHeightMm,
+        baseMm,
+        minZ:data.stats.min,
+        scaleMmPerMeter,
+        zExag
+      }
+    );
+
+    const reliefMm=
+      (data.stats.max-data.stats.min)*
+      scaleMmPerMeter*
+      zExag;
+
+    const totalHeightMm=baseMm+reliefMm;
+
+    const blob=new Blob(
+      [stl.buffer],
+      {type:"model/stl"}
+    );
+
+    const url=URL.createObjectURL(blob);
+    const river=currentRiverName()==="미선택"?"RiverDEM":currentRiverName();
+    const demBase=String(currentDemName()||"DEM").replace(/\.[^.]+$/,"");
+    const fileName=projectFileSafeName(`${river}_${demBase}_terrain`)+".stl";
+
+    const a=document.createElement("a");
+    a.href=url;
+    a.download=fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+    const scaleDenom=
+      plan.dims.widthM*1000/widthMm;
+
+    if(info){
+      info.innerText=
+        `STL 생성 완료: ${fileName}\n`+
+        `모형: ${widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} × ${totalHeightMm.toFixed(1)} mm\n`+
+        `고도: ${data.stats.min.toFixed(2)} ~ ${data.stats.max.toFixed(2)} m\n`+
+        `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()} · Z축 ${zExag.toFixed(2)}×\n`+
+        `메시: ${plan.cols} × ${plan.rows} · ${stl.triangleCount.toLocaleString()} triangles\n`+
+        `NoData 대체: ${data.stats.invalid.toLocaleString()} cells`;
+    }
+
+    log.innerText=
+      `3D 지형 STL 생성 완료\n`+
+      `파일: ${fileName}\n`+
+      `메시: ${plan.cols} × ${plan.rows}\n`+
+      `Triangles: ${stl.triangleCount.toLocaleString()}`;
+  }catch(err){
+    if(info)info.innerText="STL 생성 실패: "+(err?.message||String(err));
+    alert("STL 생성 실패: "+(err?.message||String(err)));
+  }finally{
+    print3dBusy=false;
+  }
+}
+
+function serializePrint3dProject(){
+  return {
+    bounds:print3dSelection
+      ?[
+        [print3dSelection.getSouth(),print3dSelection.getWest()],
+        [print3dSelection.getNorth(),print3dSelection.getEast()]
+      ]
+      :null,
+    widthMm:Number(document.getElementById("print3dWidthMm")?.value||180),
+    baseMm:Number(document.getElementById("print3dBaseMm")?.value||5),
+    zExag:Number(document.getElementById("print3dZExag")?.value||2),
+    detail:Number(document.getElementById("print3dDetail")?.value||220)
+  };
+}
+
+function restorePrint3dProject(saved){
+  if(!saved||typeof saved!=="object")return;
+
+  const setValue=(id,value)=>{
+    const el=document.getElementById(id);
+    if(el&&value!==null&&value!==undefined)el.value=String(value);
+  };
+
+  setValue("print3dWidthMm",saved.widthMm);
+  setValue("print3dBaseMm",saved.baseMm);
+  setValue("print3dZExag",saved.zExag);
+  setValue("print3dDetail",saved.detail);
+
+  if(
+    Array.isArray(saved.bounds)&&
+    saved.bounds.length===2&&
+    Array.isArray(saved.bounds[0])&&
+    Array.isArray(saved.bounds[1])
+  ){
+    const a=saved.bounds[0];
+    const b=saved.bounds[1];
+
+    if(
+      Number.isFinite(Number(a[0]))&&
+      Number.isFinite(Number(a[1]))&&
+      Number.isFinite(Number(b[0]))&&
+      Number.isFinite(Number(b[1]))
+    ){
+      setPrint3dSelection(
+        L.latLngBounds(
+          L.latLng(Number(a[0]),Number(a[1])),
+          L.latLng(Number(b[0]),Number(b[1]))
+        )
+      );
+    }
+  }
+
+  updatePrint3dInfo();
+}
+
+window.openPrint3dModal=openPrint3dModal;
+window.closePrint3dModal=closePrint3dModal;
+window.startPrint3dAreaSelection=startPrint3dAreaSelection;
+window.clearPrint3dSelection=clearPrint3dSelection;
+window.exportPrint3dStl=exportPrint3dStl;
+window.updatePrint3dInfo=updatePrint3dInfo;
 
 
 function menuToggleOverlay(type){

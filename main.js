@@ -236,6 +236,14 @@ function createWindow(){
       {label:'현재 DEM 셀 경계 ON/OFF',click(){runRenderer('menuTogglePixelBoundary()')}}
     ]},
 
+    {label:'3D Print',submenu:[
+      {label:'3D 지형 모형 만들기',click(){runRenderer('openPrint3dModal()')}},
+      {label:'지도에서 출력 영역 선택',click(){runRenderer('startPrint3dAreaSelection()')}},
+      {type:'separator'},
+      {label:'STL 생성',click(){runRenderer('exportPrint3dStl()')}},
+      {label:'출력 영역 지우기',click(){runRenderer('clearPrint3dSelection()')}}
+    ]},
+
     {label:'Help',submenu:[
       {label:'버전 정보',click(){runRenderer('alert("River DEM Desktop v4")')}}
     ]}
