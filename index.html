@@ -191,6 +191,9 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .compactInfoGrid>div:nth-child(even){color:#0f172a;font-weight:900;word-break:break-all}
 .menuStateHidden{display:none!important}
 
+
+.measureActionBtn.full{grid-column:1/-1}
+
 </style>
 </head>
 <body>
@@ -235,7 +238,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
   <div class="tool" id="measureAreaTool" onclick="toggleMeasureMode('area')" title="면적 측정">▱</div>
   <div class="tool" id="measureCheckpointTool" onclick="toggleMeasureMode('checkpoint')" title="체크포인트">●</div>
   <div class="tool" id="measureSectionTool" onclick="toggleMeasureMode('section')" title="X/Y 단면 분석">XY</div>
-  <div class="tool" onclick="clearAllMeasurements()" title="측정/체크포인트/단면 전체 삭제">×</div>
+  <div class="tool" id="measureDeleteTool" onclick="toggleMeasureMode('delete')" title="개별 지우기 모드">⌫</div>
 </div>
 
 <div class="panel right" id="rightPanel">
@@ -330,7 +333,8 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
       <div class="measureActions">
         <button id="finishMeasureBtn" class="measureActionBtn" onclick="finishCurrentMeasurement()" disabled>현재 측정 완료</button>
-        <button class="measureActionBtn danger" onclick="clearAllMeasurements()">전부 지우기</button>
+        <button id="measureDeleteBtn" class="measureActionBtn" onclick="toggleMeasureMode('delete')">⌫ 개별 지우기</button>
+        <button class="measureActionBtn danger full" onclick="clearAllMeasurements()">전부 지우기</button>
       </div>
 
       <div id="measureStatus" class="measureStatus">측정 도구를 선택하세요.</div>
@@ -2681,7 +2685,8 @@ function measureModeLabel(mode){
     length:"길이 측정",
     area:"면적 측정",
     checkpoint:"체크포인트",
-    section:"X/Y 단면 분석"
+    section:"X/Y 단면 분석",
+    delete:"개별 지우기"
   }[mode]||"측정";
 }
 
@@ -2690,7 +2695,8 @@ function syncMeasureModeUi(){
     length:["measureLengthTool","measureLengthBtn"],
     area:["measureAreaTool","measureAreaBtn"],
     checkpoint:["measureCheckpointTool","measureCheckpointBtn"],
-    section:["measureSectionTool","measureSectionBtn"]
+    section:["measureSectionTool","measureSectionBtn"],
+    delete:["measureDeleteTool","measureDeleteBtn"]
   };
 
   Object.entries(ids).forEach(([mode,list])=>{
@@ -2758,8 +2764,10 @@ function toggleMeasureMode(mode){
     status.innerText="면적 측정 모드 ON\n경계점을 순서대로 클릭하세요. 3점 이상에서 더블클릭 또는 '현재 측정 완료'로 끝냅니다.\n▱ 버튼을 다시 누르면 모드가 취소됩니다.";
   }else if(mode==="checkpoint"){
     status.innerText="체크포인트 모드 ON\n지도를 클릭할 때마다 번호 체크포인트가 추가됩니다.\n● 버튼을 다시 누르면 모드가 취소됩니다.";
-  }else{
+  }else if(mode==="section"){
     status.innerText="X/Y 단면 분석 모드 ON\n지도에서 한 점을 클릭하면 X 횡단면과 Y 종단면을 동시에 계산합니다.\nXY 버튼을 다시 누르면 모드가 취소됩니다.";
+  }else{
+    status.innerText="개별 지우기 모드 ON\n지도에서 길이선·면적·체크포인트·X/Y 단면선을 클릭하면 해당 항목만 삭제됩니다.\n⌫ 버튼을 다시 누르면 모드가 취소됩니다.";
   }
 }
 
@@ -2881,6 +2889,12 @@ async function handleMeasurementMapClick(latlng){
     return;
   }
 
+  if(measureMode==="delete"){
+    const status=document.getElementById("measureStatus");
+    if(status)status.innerText="개별 지우기 모드 ON\n삭제할 길이선·면적·체크포인트·X/Y 단면선을 직접 클릭하세요.";
+    return;
+  }
+
   measurePoints.push(L.latLng(latlng.lat,latlng.lng));
   updateMeasurementPreview();
 }
@@ -2972,6 +2986,7 @@ function finishCurrentMeasurement(finishLatLng=null){
     className:"measureTooltip"
   });
 
+  bindMeasurementToolClick(layer,id);
   layer.addTo(measurementLayerGroup);
   layer.openTooltip();
 
@@ -2987,6 +3002,61 @@ function finishCurrentMeasurement(finishLatLng=null){
 
   const live=document.getElementById("measureLive");
   if(live)live.innerText=`완료: ${label}`;
+}
+
+
+function stopWorkLayerEvent(e){
+  try{
+    if(e?.originalEvent)L.DomEvent.stopPropagation(e.originalEvent);
+  }catch(_){}
+}
+
+function bindMeasurementToolClick(layer,id){
+  if(!layer)return;
+
+  layer.on("click",async e=>{
+    if(!measureMode)return;
+
+    if(measureMode==="delete"){
+      stopWorkLayerEvent(e);
+      deleteMeasurement(id);
+
+      const status=document.getElementById("measureStatus");
+      if(status)status.innerText=`개별 지우기 모드 ON\n측정 #${id} 삭제 완료 · 계속 다른 객체를 클릭해서 삭제할 수 있습니다.`;
+      return;
+    }
+
+    if(measureMode==="length"||measureMode==="area"||measureMode==="section"){
+      stopWorkLayerEvent(e);
+
+      const ll=e?.latlng;
+      if(ll)await handleMeasurementMapClick(ll);
+    }
+  });
+}
+
+function bindXYSectionToolClick(layer){
+  if(!layer)return;
+
+  layer.on("click",async e=>{
+    if(!measureMode)return;
+
+    if(measureMode==="delete"){
+      stopWorkLayerEvent(e);
+      clearXYSectionAnalysis();
+
+      const status=document.getElementById("measureStatus");
+      if(status)status.innerText="개별 지우기 모드 ON\nX/Y 단면 삭제 완료 · 계속 다른 객체를 클릭해서 삭제할 수 있습니다.";
+      return;
+    }
+
+    if(measureMode==="length"||measureMode==="area"||measureMode==="section"){
+      stopWorkLayerEvent(e);
+
+      const ll=e?.latlng;
+      if(ll)await handleMeasurementMapClick(ll);
+    }
+  });
 }
 
 function checkpointPopupHtml(cp){
@@ -3013,15 +3083,30 @@ function bindCheckpointSectionClick(marker,cp){
   if(!marker)return;
 
   marker.on("click",async e=>{
-    if(measureMode!=="section")return;
+    if(!measureMode)return;
 
-    // 체크포인트 마커가 지도 click 이벤트를 가로채므로
-    // XY 단면 모드에서는 마커 자체를 단면 중심점으로 사용한다.
-    if(e?.originalEvent)L.DomEvent.stopPropagation(e.originalEvent);
+    if(
+      measureMode!=="length" &&
+      measureMode!=="area" &&
+      measureMode!=="section" &&
+      measureMode!=="delete"
+    ){
+      return;
+    }
+
+    stopWorkLayerEvent(e);
 
     try{
       marker.closePopup();
     }catch(_){}
+
+    if(measureMode==="delete"){
+      deleteCheckpoint(cp.id);
+
+      const status=document.getElementById("measureStatus");
+      if(status)status.innerText=`개별 지우기 모드 ON\n${cp.name||"체크포인트"} 삭제 완료 · 계속 다른 객체를 클릭해서 삭제할 수 있습니다.`;
+      return;
+    }
 
     const ll=marker.getLatLng
       ?marker.getLatLng()
@@ -3032,7 +3117,8 @@ function bindCheckpointSectionClick(marker,cp){
       Number.isFinite(Number(ll.lat)) &&
       Number.isFinite(Number(ll.lng))
     ){
-      await analyzeXYSectionAt(ll);
+      // 체크포인트 좌표 자체를 길이/면적 꼭짓점 또는 XY 단면 중심점으로 사용
+      await handleMeasurementMapClick(ll);
     }
   });
 }
@@ -3315,23 +3401,29 @@ function drawXYSectionMap(result){
     ?L.latLng(Number(yLast.lat),Number(yLast.lon))
     :xyAxisPoint(result.center,"y",result.plan.half);
 
-  L.polyline([xStart,xEnd],{
+  const xLine=L.polyline([xStart,xEnd],{
     color:"#2563eb",
     weight:4,
     opacity:.95
   }).bindTooltip("X 횡단면",{
     permanent:false,
     className:"measureTooltip"
-  }).addTo(xySectionLayerGroup);
+  });
 
-  L.polyline([yStart,yEnd],{
+  bindXYSectionToolClick(xLine);
+  xLine.addTo(xySectionLayerGroup);
+
+  const yLine=L.polyline([yStart,yEnd],{
     color:"#0f766e",
     weight:4,
     opacity:.95
   }).bindTooltip("Y 종단면",{
     permanent:false,
     className:"measureTooltip"
-  }).addTo(xySectionLayerGroup);
+  });
+
+  bindXYSectionToolClick(yLine);
+  yLine.addTo(xySectionLayerGroup);
 
   const icon=L.divIcon({
     className:"",
@@ -3667,6 +3759,16 @@ function deleteCheckpoint(id){
 }
 
 function clearAllMeasurements(){
+  const hasAny=
+    measurements.length>0 ||
+    checkpoints.length>0 ||
+    !!xySectionResult;
+
+  if(hasAny){
+    const ok=confirm("길이·면적·체크포인트·X/Y 단면 결과를 전부 지울까요?");
+    if(!ok)return;
+  }
+
   clearMeasureDraft();
 
   measurements=[];
@@ -3834,7 +3936,7 @@ function excelCellXml(value,rowIndex,colIndex,styleIndex){
   return `<c r="${ref}" t="inlineStr"${s}><is><t xml:space="preserve">${excelXmlEscape(value)}</t></is></c>`;
 }
 
-function excelWorksheetXml(rows){
+function excelWorksheetXml(rows,drawingRelId=null){
   const safeRows=Array.isArray(rows)&&rows.length?rows:[["항목","값"]];
   const colCount=Math.max(1,...safeRows.map(r=>Array.isArray(r)?r.length:0));
   const widths=[];
@@ -3865,14 +3967,23 @@ function excelWorksheetXml(rows){
 
   const lastCell=excelColumnName(colCount-1)+safeRows.length;
 
+  const drawingXml=drawingRelId
+    ?`<drawing r:id="${drawingRelId}"/>`
+    :"";
+
+  const relNs=drawingRelId
+    ?` xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
+    :"";
+
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
-    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"${relNs}>`+
       `<sheetViews><sheetView workbookViewId="0">`+
         `<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>`+
       `</sheetView></sheetViews>`+
       `<cols>${cols}</cols>`+
       `<sheetData>${body}</sheetData>`+
       `<autoFilter ref="A1:${lastCell}"/>`+
+      drawingXml+
     `</worksheet>`;
 }
 
@@ -4042,6 +4153,161 @@ function excelZipStore(files){
   return excelConcat([localBytes,centralBytes,eocd]);
 }
 
+
+function excelFormulaSheetName(name){
+  return `'${String(name||"").replace(/'/g,"''")}'`;
+}
+
+function excelChartTitleXml(title){
+  return `<c:title>`+
+    `<c:tx><c:rich>`+
+      `<a:bodyPr/><a:lstStyle/>`+
+      `<a:p><a:r><a:rPr lang="ko-KR" sz="1200" b="1"/><a:t>${excelXmlEscape(title)}</a:t></a:r></a:p>`+
+    `</c:rich></c:tx>`+
+    `<c:layout/>`+
+    `<c:overlay val="0"/>`+
+  `</c:title>`;
+}
+
+function excelScatterChartXml(title,sheetName,startRow,endRow,axisXId,axisYId){
+  const sheetRef=excelFormulaSheetName(sheetName);
+  const xRef=`${sheetRef}!$B$${startRow}:$B$${endRow}`;
+  const yRef=`${sheetRef}!$C$${startRow}:$C$${endRow}`;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<c:chartSpace `+
+    `xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" `+
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">`+
+    `<c:date1904 val="0"/>`+
+    `<c:lang val="ko-KR"/>`+
+    `<c:roundedCorners val="0"/>`+
+    `<c:chart>`+
+      excelChartTitleXml(title)+
+      `<c:autoTitleDeleted val="0"/>`+
+      `<c:plotArea>`+
+        `<c:layout/>`+
+        `<c:scatterChart>`+
+          `<c:scatterStyle val="lineMarker"/>`+
+          `<c:varyColors val="0"/>`+
+          `<c:ser>`+
+            `<c:idx val="0"/>`+
+            `<c:order val="0"/>`+
+            `<c:tx><c:v>${excelXmlEscape(title)}</c:v></c:tx>`+
+            `<c:marker><c:symbol val="circle"/><c:size val="3"/></c:marker>`+
+            `<c:xVal><c:numRef><c:f>${excelXmlEscape(xRef)}</c:f></c:numRef></c:xVal>`+
+            `<c:yVal><c:numRef><c:f>${excelXmlEscape(yRef)}</c:f></c:numRef></c:yVal>`+
+            `<c:smooth val="0"/>`+
+          `</c:ser>`+
+          `<c:dLbls>`+
+            `<c:showLegendKey val="0"/><c:showVal val="0"/><c:showCatName val="0"/>`+
+            `<c:showSerName val="0"/><c:showPercent val="0"/><c:showBubbleSize val="0"/>`+
+          `</c:dLbls>`+
+          `<c:axId val="${axisXId}"/>`+
+          `<c:axId val="${axisYId}"/>`+
+        `</c:scatterChart>`+
+
+        `<c:valAx>`+
+          `<c:axId val="${axisXId}"/>`+
+          `<c:scaling><c:orientation val="minMax"/></c:scaling>`+
+          `<c:delete val="0"/>`+
+          `<c:axPos val="b"/>`+
+          `<c:numFmt formatCode="0" sourceLinked="0"/>`+
+          `<c:majorTickMark val="out"/>`+
+          `<c:minorTickMark val="none"/>`+
+          `<c:tickLblPos val="nextTo"/>`+
+          `<c:spPr><a:ln><a:solidFill><a:srgbClr val="808080"/></a:solidFill></a:ln></c:spPr>`+
+          `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr></a:p></c:txPr>`+
+          `<c:crossAx val="${axisYId}"/>`+
+          `<c:crosses val="autoZero"/>`+
+          `<c:crossBetween val="midCat"/>`+
+        `</c:valAx>`+
+
+        `<c:valAx>`+
+          `<c:axId val="${axisYId}"/>`+
+          `<c:scaling><c:orientation val="minMax"/></c:scaling>`+
+          `<c:delete val="0"/>`+
+          `<c:axPos val="l"/>`+
+          `<c:numFmt formatCode="0.00" sourceLinked="0"/>`+
+          `<c:majorGridlines/>`+
+          `<c:majorTickMark val="out"/>`+
+          `<c:minorTickMark val="none"/>`+
+          `<c:tickLblPos val="nextTo"/>`+
+          `<c:spPr><a:ln><a:solidFill><a:srgbClr val="808080"/></a:solidFill></a:ln></c:spPr>`+
+          `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"/></a:pPr></a:p></c:txPr>`+
+          `<c:crossAx val="${axisXId}"/>`+
+          `<c:crosses val="autoZero"/>`+
+          `<c:crossBetween val="midCat"/>`+
+        `</c:valAx>`+
+      `</c:plotArea>`+
+      `<c:plotVisOnly val="1"/>`+
+      `<c:dispBlanksAs val="gap"/>`+
+      `<c:showDLblsOverMax val="0"/>`+
+    `</c:chart>`+
+    `<c:printSettings>`+
+      `<c:headerFooter/>`+
+      `<c:pageMargins b="0.75" l="0.7" r="0.7" t="0.75" header="0.3" footer="0.3"/>`+
+      `<c:pageSetup/>`+
+    `</c:printSettings>`+
+  `</c:chartSpace>`;
+}
+
+function excelProfileDrawingXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<xdr:wsDr `+
+    `xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" `+
+    `xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" `+
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" `+
+    `xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">`+
+
+    `<xdr:twoCellAnchor>`+
+      `<xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`+
+      `<xdr:to><xdr:col>12</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>17</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>`+
+      `<xdr:graphicFrame macro="">`+
+        `<xdr:nvGraphicFramePr><xdr:cNvPr id="2" name="횡단면 X 그래프"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`+
+        `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>`+
+        `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">`+
+          `<c:chart r:id="rId1"/>`+
+        `</a:graphicData></a:graphic>`+
+      `</xdr:graphicFrame>`+
+      `<xdr:clientData/>`+
+    `</xdr:twoCellAnchor>`+
+
+    `<xdr:twoCellAnchor>`+
+      `<xdr:from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>18</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>`+
+      `<xdr:to><xdr:col>12</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>34</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>`+
+      `<xdr:graphicFrame macro="">`+
+        `<xdr:nvGraphicFramePr><xdr:cNvPr id="3" name="종단면 Y 그래프"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>`+
+        `<xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm>`+
+        `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">`+
+          `<c:chart r:id="rId2"/>`+
+        `</a:graphicData></a:graphic>`+
+      `</xdr:graphicFrame>`+
+      `<xdr:clientData/>`+
+    `</xdr:twoCellAnchor>`+
+  `</xdr:wsDr>`;
+}
+
+function excelProfileDrawingRelsXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+    `<Relationship Id="rId1" `+
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" `+
+      `Target="../charts/chart1.xml"/>`+
+    `<Relationship Id="rId2" `+
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" `+
+      `Target="../charts/chart2.xml"/>`+
+  `</Relationships>`;
+}
+
+function excelWorksheetDrawingRelXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+    `<Relationship Id="rId1" `+
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" `+
+      `Target="../drawings/drawing1.xml"/>`+
+  `</Relationships>`;
+}
+
 function buildRiverDemXlsxBytes(sheetDefs){
   const used=new Set();
 
@@ -4049,6 +4315,25 @@ function buildRiverDemXlsxBytes(sheetDefs){
     name:excelSafeSheetName(sheet.name,used),
     rows:Array.isArray(sheet.rows)?sheet.rows:[]
   }));
+
+  const summaryIndex=sheets.findIndex(s=>s.name==="XY단면요약");
+  const xIndex=sheets.findIndex(s=>s.name==="XY_X");
+  const yIndex=sheets.findIndex(s=>s.name==="XY_Y");
+
+  const hasX=
+    xIndex>=0 &&
+    Array.isArray(sheets[xIndex].rows) &&
+    sheets[xIndex].rows.length>1;
+
+  const hasY=
+    yIndex>=0 &&
+    Array.isArray(sheets[yIndex].rows) &&
+    sheets[yIndex].rows.length>1;
+
+  const hasProfileCharts=
+    summaryIndex>=0 &&
+    hasX &&
+    hasY;
 
   const workbookSheets=sheets.map((s,i)=>
     `<sheet name="${excelXmlEscape(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`
@@ -4078,10 +4363,21 @@ function buildRiverDemXlsxBytes(sheetDefs){
       `Target="styles.xml"/>`+
     `</Relationships>`;
 
-  const overrides=sheets.map((s,i)=>
+  const sheetOverrides=sheets.map((s,i)=>
     `<Override PartName="/xl/worksheets/sheet${i+1}.xml" `+
     `ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
   ).join("");
+
+  const chartOverrides=hasProfileCharts
+    ?(
+      `<Override PartName="/xl/drawings/drawing1.xml" `+
+      `ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`+
+      `<Override PartName="/xl/charts/chart1.xml" `+
+      `ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`+
+      `<Override PartName="/xl/charts/chart2.xml" `+
+      `ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`
+    )
+    :"";
 
   const contentTypes=
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
@@ -4090,7 +4386,8 @@ function buildRiverDemXlsxBytes(sheetDefs){
       `<Default Extension="xml" ContentType="application/xml"/>`+
       `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`+
       `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`+
-      overrides+
+      sheetOverrides+
+      chartOverrides+
     `</Types>`;
 
   const rootRels=
@@ -4110,15 +4407,65 @@ function buildRiverDemXlsxBytes(sheetDefs){
   ];
 
   sheets.forEach((s,i)=>{
+    const drawingRelId=
+      hasProfileCharts && i===summaryIndex
+        ?"rId1"
+        :null;
+
     files.push({
       name:`xl/worksheets/sheet${i+1}.xml`,
-      data:excelWorksheetXml(s.rows)
+      data:excelWorksheetXml(s.rows,drawingRelId)
     });
   });
 
+  if(hasProfileCharts){
+    const summarySheetNo=summaryIndex+1;
+    const xSheet=sheets[xIndex];
+    const ySheet=sheets[yIndex];
+
+    const xEndRow=xSheet.rows.length;
+    const yEndRow=ySheet.rows.length;
+
+    files.push(
+      {
+        name:`xl/worksheets/_rels/sheet${summarySheetNo}.xml.rels`,
+        data:excelWorksheetDrawingRelXml()
+      },
+      {
+        name:"xl/drawings/drawing1.xml",
+        data:excelProfileDrawingXml()
+      },
+      {
+        name:"xl/drawings/_rels/drawing1.xml.rels",
+        data:excelProfileDrawingRelsXml()
+      },
+      {
+        name:"xl/charts/chart1.xml",
+        data:excelScatterChartXml(
+          "횡단면 X · 서 ↔ 동",
+          xSheet.name,
+          2,
+          xEndRow,
+          110001,
+          110002
+        )
+      },
+      {
+        name:"xl/charts/chart2.xml",
+        data:excelScatterChartXml(
+          "종단면 Y · 남 ↔ 북",
+          ySheet.name,
+          2,
+          yEndRow,
+          120001,
+          120002
+        )
+      }
+    );
+  }
+
   return excelZipStore(files);
 }
-
 function excelNum(v){
   const n=Number(v);
   return Number.isFinite(n)?n:"";
@@ -4395,7 +4742,8 @@ function exportRiverDemAnalysisExcel(){
 
     updateProjectStatus(
       `Excel 내보내기 완료\n${fileName}\n`+
-      `시트 8개 · 측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개`
+      `시트 8개 · 측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개`+
+      `${xySectionResult?" · X/Y 단면 그래프 포함":""}`
     );
 
     log.innerText=
@@ -4627,6 +4975,7 @@ function restoreMeasurementLayers(){
         className:"measureTooltip"
       });
 
+      bindMeasurementToolClick(layer,Number(r.id));
       layer.addTo(measurementLayerGroup);
       layer.openTooltip();
       measurementLayers.set(Number(r.id),layer);
@@ -4653,6 +5002,7 @@ function restoreMeasurementLayers(){
         className:"measureTooltip"
       });
 
+      bindMeasurementToolClick(layer,Number(r.id));
       layer.addTo(measurementLayerGroup);
       layer.openTooltip();
       measurementLayers.set(Number(r.id),layer);
