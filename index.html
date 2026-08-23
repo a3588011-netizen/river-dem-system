@@ -541,17 +541,26 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     <div class="print3dGrid" style="margin-top:12px">
       <div class="print3dField">
         <label>모형 가로 크기 (mm)</label>
-        <input id="print3dWidthMm" type="number" value="180" min="20" max="500" step="1" oninput="updatePrint3dInfo()">
+        <input id="print3dWidthMm" type="text" inputmode="decimal" value="180"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,20,500,180,0);updatePrint3dInfo()">
       </div>
 
       <div class="print3dField">
         <label>바닥 두께 (mm)</label>
-        <input id="print3dBaseMm" type="number" value="5" min="1" max="50" step="0.5" oninput="updatePrint3dInfo()">
+        <input id="print3dBaseMm" type="text" inputmode="decimal" value="5"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,1,50,5,1);updatePrint3dInfo()">
       </div>
 
       <div class="print3dField">
         <label>Z축 과장 배율</label>
-        <input id="print3dZExag" type="number" value="2" min="0.1" max="20" step="0.1" oninput="updatePrint3dInfo()">
+        <input id="print3dZExag" type="text" inputmode="decimal" value="2"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,0.1,20,2,1);updatePrint3dInfo()">
       </div>
 
       <div class="print3dField">
@@ -5622,6 +5631,57 @@ window.loadRiverDemProject=loadRiverDemProject;
 
 
 
+
+function handlePrint3dNumericInput(el){
+  if(!el)return;
+
+  // 한글 IME/복붙이 들어와도 숫자, 소수점, 앞쪽 - 만 남김.
+  // 입력 중 빈 문자열과 끝의 소수점은 그대로 허용해서 키보드 입력이 끊기지 않게 함.
+  let value=String(el.value??"")
+    .replace(/,/g,".")
+    .replace(/[^\d.\-]/g,"");
+
+  const negative=value.startsWith("-");
+  value=value.replace(/-/g,"");
+  if(negative)value="-"+value;
+
+  const firstDot=value.indexOf(".");
+  if(firstDot>=0){
+    value=value.slice(0,firstDot+1)+value.slice(firstDot+1).replace(/\./g,"");
+  }
+
+  if(el.value!==value)el.value=value;
+}
+
+function normalizePrint3dNumericInput(el,min,max,fallback,decimals=1){
+  if(!el)return;
+
+  let raw=String(el.value??"").trim().replace(",",".");
+  let value=Number(raw);
+
+  if(!Number.isFinite(value)){
+    value=Number(fallback);
+  }
+
+  value=Math.max(Number(min),Math.min(Number(max),value));
+
+  if(decimals<=0){
+    el.value=String(Math.round(value));
+    return;
+  }
+
+  const fixed=value.toFixed(decimals);
+  el.value=fixed.replace(/\.0+$/,"").replace(/(\.\d*?)0+$/,"$1");
+}
+
+function getPrint3dNumericValue(id,fallback){
+  const el=document.getElementById(id);
+  if(!el)return Number(fallback);
+
+  const value=Number(String(el.value??"").replace(",","."));
+  return Number.isFinite(value)?value:Number(fallback);
+}
+
 function openPrint3dModal(){
   const modal=document.getElementById("print3dModal");
   if(!modal)return;
@@ -5633,6 +5693,17 @@ function openPrint3dModal(){
 
   updatePrint3dInfo();
   modal.style.display="flex";
+
+  // 숫자 입력칸은 마우스로 눌렀을 때 기존 값 전체 선택.
+  // 휠로 값이 바뀌는 오입력도 막음.
+  ["print3dWidthMm","print3dBaseMm","print3dZExag"].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el||el.dataset.print3dInputBound==="1")return;
+
+    el.dataset.print3dInputBound="1";
+    el.addEventListener("focus",()=>setTimeout(()=>el.select(),0));
+    el.addEventListener("wheel",e=>e.preventDefault(),{passive:false});
+  });
 }
 
 function closePrint3dModal(){
@@ -5788,7 +5859,7 @@ function print3dMeshPlan(){
     20,
     Math.min(
       500,
-      Number(document.getElementById("print3dWidthMm")?.value||180)
+      getPrint3dNumericValue("print3dWidthMm",180)
     )
   );
 
@@ -5796,11 +5867,11 @@ function print3dMeshPlan(){
     ?widthMm*(dims.heightM/dims.widthM)
     :0;
 
+  // top + bottom을 동일한 격자로 나눠 측면 경계와 정확히 일치시킴
   const triangles=
-    2*(cols-1)*(rows-1)+
+    4*(cols-1)*(rows-1)+
     4*(cols-1)+
-    4*(rows-1)+
-    2;
+    4*(rows-1);
 
   return {
     win,
@@ -5835,12 +5906,12 @@ function updatePrint3dInfo(){
 
   const zExag=Math.max(
     0.1,
-    Number(document.getElementById("print3dZExag")?.value||2)
+    getPrint3dNumericValue("print3dZExag",2)
   );
 
   const baseMm=Math.max(
     1,
-    Number(document.getElementById("print3dBaseMm")?.value||5)
+    getPrint3dNumericValue("print3dBaseMm",5)
   );
 
   const scaleDenom=
@@ -5987,8 +6058,9 @@ function buildBinaryTerrainStl(heights,cols,rows,options){
   }
 
   const topTriangles=2*(cols-1)*(rows-1);
+  const bottomTriangles=2*(cols-1)*(rows-1);
   const sideTriangles=4*(cols-1)+4*(rows-1);
-  const triangleCount=topTriangles+sideTriangles+2;
+  const triangleCount=topTriangles+bottomTriangles+sideTriangles;
 
   const buffer=new ArrayBuffer(84+triangleCount*50);
   const view=new DataView(buffer);
@@ -6078,13 +6150,20 @@ function buildBinaryTerrainStl(heights,cols,rows,options){
   }
 
   // bottom
-  const p00=[0,0,0];
-  const p10=[modelWidth,0,0];
-  const p01=[0,modelHeight,0];
-  const p11=[modelWidth,modelHeight,0];
+  // 측면 하단의 분할점과 동일한 cols×rows 격자로 생성하여
+  // T-junction / non-manifold edge를 방지한다.
+  for(let r=0;r<rows-1;r++){
+    for(let c=0;c<cols-1;c++){
+      const a=[c*dx,r*dy,0];
+      const b=[(c+1)*dx,r*dy,0];
+      const d=[(c+1)*dx,(r+1)*dy,0];
+      const cc=[c*dx,(r+1)*dy,0];
 
-  offset=writePrint3dTriangle(view,offset,p00,p01,p10);
-  offset=writePrint3dTriangle(view,offset,p10,p01,p11);
+      // 바닥 노멀: -Z
+      offset=writePrint3dTriangle(view,offset,a,cc,b);
+      offset=writePrint3dTriangle(view,offset,b,cc,d);
+    }
+  }
 
   if(offset!==buffer.byteLength){
     throw new Error("STL 바이너리 크기 계산이 일치하지 않습니다.");
@@ -6115,9 +6194,9 @@ async function exportPrint3dStl(){
     return;
   }
 
-  const widthMm=Number(document.getElementById("print3dWidthMm")?.value||180);
-  const baseMm=Number(document.getElementById("print3dBaseMm")?.value||5);
-  const zExag=Number(document.getElementById("print3dZExag")?.value||2);
+  const widthMm=getPrint3dNumericValue("print3dWidthMm",180);
+  const baseMm=getPrint3dNumericValue("print3dBaseMm",5);
+  const zExag=getPrint3dNumericValue("print3dZExag",2);
 
   if(!Number.isFinite(widthMm)||widthMm<20||widthMm>500){
     alert("모형 가로 크기는 20~500 mm 범위로 입력해주세요.");
@@ -6205,6 +6284,7 @@ async function exportPrint3dStl(){
         `고도: ${data.stats.min.toFixed(2)} ~ ${data.stats.max.toFixed(2)} m\n`+
         `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()} · Z축 ${zExag.toFixed(2)}×\n`+
         `메시: ${plan.cols} × ${plan.rows} · ${stl.triangleCount.toLocaleString()} triangles\n`+
+        `구조: 상판·측면·격자 바닥 폐합형(manifold)\n`+
         `NoData 대체: ${data.stats.invalid.toLocaleString()} cells`;
     }
 
@@ -6229,9 +6309,9 @@ function serializePrint3dProject(){
         [print3dSelection.getNorth(),print3dSelection.getEast()]
       ]
       :null,
-    widthMm:Number(document.getElementById("print3dWidthMm")?.value||180),
-    baseMm:Number(document.getElementById("print3dBaseMm")?.value||5),
-    zExag:Number(document.getElementById("print3dZExag")?.value||2),
+    widthMm:getPrint3dNumericValue("print3dWidthMm",180),
+    baseMm:getPrint3dNumericValue("print3dBaseMm",5),
+    zExag:getPrint3dNumericValue("print3dZExag",2),
     detail:Number(document.getElementById("print3dDetail")?.value||220)
   };
 }
