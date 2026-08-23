@@ -120,6 +120,25 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .riverMeta{font-size:9px;line-height:1.35;color:#64748b;font-weight:700;white-space:normal}
 .river.active .riverMeta{color:#1d4ed8}
 
+
+.measureBox{margin-top:10px;padding:10px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc}
+.measureButtons{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.measureBtn{border:1px solid #cbd5e1;background:white;color:#334155;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:900;cursor:pointer}
+.measureBtn:hover,.measureBtn.active{background:#2563eb;border-color:#2563eb;color:white}
+.measureActions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}
+.measureActionBtn{border:0;border-radius:8px;padding:8px 5px;font-size:11px;font-weight:900;cursor:pointer;background:#475569;color:white}
+.measureActionBtn.danger{background:#b91c1c}
+.measureActionBtn:disabled{opacity:.4;cursor:not-allowed}
+.measureStatus{margin-top:8px;padding:8px;border-radius:8px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:800;line-height:1.45;white-space:pre-line}
+.measureLive{margin-top:7px;font-size:12px;font-weight:900;color:#0f172a}
+.measureList{margin-top:8px;max-height:210px;overflow:auto;border-top:1px solid #e5e7eb}
+.measureItem{padding:8px 0;border-bottom:1px solid #e5e7eb;font-size:11px;line-height:1.45}
+.measureItemHead{display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:900}
+.measureDelete{border:0;border-radius:6px;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:900;padding:4px 6px;cursor:pointer}
+.measureTooltip{background:#111827!important;color:#fff!important;border:0!important;border-radius:7px!important;box-shadow:0 4px 14px #0003!important;font-weight:900!important}
+.measureTooltip:before{display:none!important}
+.checkpointIcon{width:28px;height:28px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 3px 10px #0005;color:white;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
+
 </style>
 </head>
 <body>
@@ -155,11 +174,15 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 </div>
 
 <div class="toolbar">
-  <div class="tool active" onclick="toggleLeft()">☰</div>
-  <div class="tool" onclick="map.zoomIn()">+</div>
-  <div class="tool" onclick="map.zoomOut()">−</div>
-  <div class="tool" onclick="goCurrent()">⌾</div>
-  <div class="tool" onclick="toggleFull()">⛶</div>
+  <div class="tool active" onclick="toggleLeft()" title="하천 패널">☰</div>
+  <div class="tool" onclick="map.zoomIn()" title="확대">+</div>
+  <div class="tool" onclick="map.zoomOut()" title="축소">−</div>
+  <div class="tool" onclick="goCurrent()" title="현재 위치">⌾</div>
+  <div class="tool" onclick="toggleFull()" title="전체화면">⛶</div>
+  <div class="tool" id="measureLengthTool" onclick="toggleMeasureMode('length')" title="길이 측정">↔</div>
+  <div class="tool" id="measureAreaTool" onclick="toggleMeasureMode('area')" title="면적 측정">▱</div>
+  <div class="tool" id="measureCheckpointTool" onclick="toggleMeasureMode('checkpoint')" title="체크포인트">●</div>
+  <div class="tool" onclick="clearAllMeasurements()" title="측정/체크포인트 전체 삭제">×</div>
 </div>
 
 <div class="panel right" id="rightPanel">
@@ -230,6 +253,31 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div>처리 모드</div><div id="demProcessMode">-</div>
       <div>읽기 방식</div><div id="demReadMode">-</div>
       <div>통계 방식</div><div id="demStatsMode">-</div>
+    </div>
+
+    <hr>
+    <div class="label">측정 도구</div>
+    <div class="measureBox">
+      <div class="help">
+        도구를 한 번 누르면 측정 모드가 켜지고, 같은 도구를 다시 누르면 취소됩니다.
+      </div>
+
+      <div class="measureButtons">
+        <button id="measureLengthBtn" class="measureBtn" onclick="toggleMeasureMode('length')">↔ 길이</button>
+        <button id="measureAreaBtn" class="measureBtn" onclick="toggleMeasureMode('area')">▱ 면적</button>
+        <button id="measureCheckpointBtn" class="measureBtn" onclick="toggleMeasureMode('checkpoint')">● 체크포인트</button>
+      </div>
+
+      <div class="measureActions">
+        <button id="finishMeasureBtn" class="measureActionBtn" onclick="finishCurrentMeasurement()" disabled>현재 측정 완료</button>
+        <button class="measureActionBtn danger" onclick="clearAllMeasurements()">전부 지우기</button>
+      </div>
+
+      <div id="measureStatus" class="measureStatus">측정 도구를 선택하세요.</div>
+      <div id="measureLive" class="measureLive">-</div>
+      <div id="measureList" class="measureList">
+        <div class="help" style="padding-top:8px">저장된 측정 결과가 없습니다.</div>
+      </div>
     </div>
 
     <hr>
@@ -385,6 +433,19 @@ let demWindowCache=new Map();
 let demSampleToken=0;
 let validationRecords=[];
 let validationLayer=null;
+
+// 측정 도구
+let measureMode=null;
+let measurePoints=[];
+let measureDraftLayer=null;
+let measurementLayerGroup=null;
+let checkpointLayerGroup=null;
+let measurements=[];
+let checkpoints=[];
+let measurementLayers=new Map();
+let checkpointLayers=new Map();
+let measurementSeq=1;
+let checkpointSeq=1;
 let heatRenderToken=0;
 const VALIDATION_STORAGE_KEY="riverdem_validation_records_v1";
 const RIVER_FAVORITES_KEY="riverdem_favorite_rivers_v1";
@@ -403,9 +464,35 @@ function initMap(){
     setBaseMap();
   },0);
 
-  map.on("mousemove",e=>updateStatus(e.latlng));
+  map.on("mousemove",e=>{
+    updateStatus(e.latlng);
+    updateMeasurementPreview(e.latlng);
+  });
+
   map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
-  map.on("click",e=>{samplePoint(e.latlng.lat,e.latlng.lng).catch(err=>{log.innerText="DEM 샘플링 오류: "+err.message;});});
+
+  map.on("click",e=>{
+    if(measureMode){
+      handleMeasurementMapClick(e.latlng).catch(err=>{
+        log.innerText="측정 도구 오류: "+err.message;
+      });
+      return;
+    }
+
+    samplePoint(e.latlng.lat,e.latlng.lng).catch(err=>{
+      log.innerText="DEM 샘플링 오류: "+err.message;
+    });
+  });
+
+  map.on("dblclick",e=>{
+    if(measureMode==="length"||measureMode==="area"){
+      if(e.originalEvent)L.DomEvent.stop(e.originalEvent);
+      finishCurrentMeasurement(e.latlng);
+    }
+  });
+
+  measurementLayerGroup=L.layerGroup().addTo(map);
+  checkpointLayerGroup=L.layerGroup().addTo(map);
   validationLayer=L.layerGroup().addTo(map);
   loadValidationRecords();
   loadFavoriteRivers();
@@ -2361,6 +2448,492 @@ function exportValidationCsv(){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+
+function measureModeLabel(mode){
+  return {
+    length:"길이 측정",
+    area:"면적 측정",
+    checkpoint:"체크포인트"
+  }[mode]||"측정";
+}
+
+function syncMeasureModeUi(){
+  const ids={
+    length:["measureLengthTool","measureLengthBtn"],
+    area:["measureAreaTool","measureAreaBtn"],
+    checkpoint:["measureCheckpointTool","measureCheckpointBtn"]
+  };
+
+  Object.entries(ids).forEach(([mode,list])=>{
+    list.forEach(id=>{
+      const el=document.getElementById(id);
+      if(el)el.classList.toggle("active",measureMode===mode);
+    });
+  });
+
+  const finish=document.getElementById("finishMeasureBtn");
+  if(finish){
+    finish.disabled=!(measureMode==="length"||measureMode==="area");
+  }
+
+  if(map){
+    map.getContainer().style.cursor=measureMode?"crosshair":"";
+
+    if(measureMode==="length"||measureMode==="area"){
+      if(map.doubleClickZoom?.enabled())map.doubleClickZoom.disable();
+    }else{
+      if(map.doubleClickZoom && !map.doubleClickZoom.enabled())map.doubleClickZoom.enable();
+    }
+  }
+}
+
+function clearMeasureDraft(){
+  measurePoints=[];
+
+  if(measureDraftLayer&&map){
+    map.removeLayer(measureDraftLayer);
+  }
+
+  measureDraftLayer=null;
+
+  const live=document.getElementById("measureLive");
+  if(live)live.innerText="-";
+}
+
+function toggleMeasureMode(mode){
+  if(measureMode===mode){
+    deactivateMeasureMode();
+    return;
+  }
+
+  clearMeasureDraft();
+  measureMode=mode;
+  syncMeasureModeUi();
+
+  const status=document.getElementById("measureStatus");
+  if(!status)return;
+
+  if(mode==="length"){
+    status.innerText="길이 측정 모드 ON\n지도에서 점을 순서대로 클릭하세요. 더블클릭 또는 '현재 측정 완료'로 끝냅니다.\n↔ 버튼을 다시 누르면 모드가 취소됩니다.";
+  }else if(mode==="area"){
+    status.innerText="면적 측정 모드 ON\n경계점을 순서대로 클릭하세요. 3점 이상에서 더블클릭 또는 '현재 측정 완료'로 끝냅니다.\n▱ 버튼을 다시 누르면 모드가 취소됩니다.";
+  }else{
+    status.innerText="체크포인트 모드 ON\n지도를 클릭할 때마다 번호 체크포인트가 추가됩니다.\n● 버튼을 다시 누르면 모드가 취소됩니다.";
+  }
+}
+
+function deactivateMeasureMode(){
+  clearMeasureDraft();
+  measureMode=null;
+  syncMeasureModeUi();
+
+  const status=document.getElementById("measureStatus");
+  if(status)status.innerText="측정 모드 OFF · 도구를 선택하세요.";
+}
+
+function lengthMeters(points){
+  if(!map||!Array.isArray(points)||points.length<2)return 0;
+
+  let total=0;
+  for(let i=1;i<points.length;i++){
+    total+=map.distance(points[i-1],points[i]);
+  }
+
+  return total;
+}
+
+function geodesicArea(points){
+  if(!Array.isArray(points)||points.length<3)return 0;
+
+  const R=6378137;
+  const d2r=Math.PI/180;
+  let area=0;
+
+  for(let i=0;i<points.length;i++){
+    const p1=points[i];
+    const p2=points[(i+1)%points.length];
+
+    area+=
+      (p2.lng-p1.lng)*d2r*
+      (2+Math.sin(p1.lat*d2r)+Math.sin(p2.lat*d2r));
+  }
+
+  return Math.abs(area*R*R/2);
+}
+
+function formatLength(m){
+  if(!Number.isFinite(m))return "-";
+  if(m>=1000)return `${(m/1000).toFixed(3)} km (${m.toFixed(1)} m)`;
+  return `${m.toFixed(2)} m`;
+}
+
+function formatArea(m2){
+  if(!Number.isFinite(m2))return "-";
+
+  const ha=m2/10000;
+  const km2=m2/1000000;
+
+  return `${m2.toFixed(1)} m² · ${ha.toFixed(4)} ha · ${km2.toFixed(6)} km²`;
+}
+
+function primaryAreaLabel(m2){
+  if(m2>=1000000)return `${(m2/1000000).toFixed(3)} km²`;
+  if(m2>=10000)return `${(m2/10000).toFixed(3)} ha`;
+  return `${m2.toFixed(1)} m²`;
+}
+
+function updateMeasurementPreview(mouseLatLng=null){
+  if(!(measureMode==="length"||measureMode==="area"))return;
+  if(!measurePoints.length)return;
+
+  const pts=mouseLatLng?[...measurePoints,mouseLatLng]:[...measurePoints];
+
+  if(measureDraftLayer&&map){
+    map.removeLayer(measureDraftLayer);
+    measureDraftLayer=null;
+  }
+
+  if(measureMode==="length"){
+    measureDraftLayer=L.polyline(pts,{
+      color:"#2563eb",
+      weight:3,
+      dashArray:"7 5",
+      opacity:.9,
+      interactive:false
+    }).addTo(map);
+
+    const value=lengthMeters(pts);
+    const live=document.getElementById("measureLive");
+    if(live)live.innerText=`현재 길이: ${formatLength(value)} · 점 ${measurePoints.length}개`;
+  }else{
+    measureDraftLayer=L.polygon(pts,{
+      color:"#7c3aed",
+      weight:3,
+      dashArray:"7 5",
+      fill:true,
+      fillColor:"#8b5cf6",
+      fillOpacity:.12,
+      interactive:false
+    }).addTo(map);
+
+    const value=pts.length>=3?geodesicArea(pts):0;
+    const live=document.getElementById("measureLive");
+    if(live){
+      live.innerText=pts.length>=3
+        ?`현재 면적: ${formatArea(value)} · 점 ${measurePoints.length}개`
+        :`면적 경계점 ${measurePoints.length}개 · 최소 3점 필요`;
+    }
+  }
+}
+
+async function handleMeasurementMapClick(latlng){
+  if(!measureMode)return;
+
+  if(measureMode==="checkpoint"){
+    await addCheckpointAt(latlng);
+    return;
+  }
+
+  measurePoints.push(L.latLng(latlng.lat,latlng.lng));
+  updateMeasurementPreview();
+}
+
+function removeDuplicateDoubleClickPoint(points,finishLatLng){
+  const pts=[...points];
+  if(pts.length<2||!map)return pts;
+
+  const last=pts[pts.length-1];
+  const prev=pts[pts.length-2];
+
+  // Leaflet double-click 시 같은 위치의 click이 두 번 들어오는 경우 제거
+  if(
+    map.distance(last,prev)<=2.0 ||
+    (finishLatLng && map.distance(prev,finishLatLng)<=2.0 && map.distance(last,finishLatLng)<=2.0)
+  ){
+    pts.pop();
+  }
+
+  return pts;
+}
+
+function finishCurrentMeasurement(finishLatLng=null){
+  if(!(measureMode==="length"||measureMode==="area"))return;
+
+  let pts=removeDuplicateDoubleClickPoint(measurePoints,finishLatLng);
+
+  if(measureMode==="length"&&pts.length<2){
+    alert("길이 측정은 최소 2개의 점이 필요합니다.");
+    return;
+  }
+
+  if(measureMode==="area"&&pts.length<3){
+    alert("면적 측정은 최소 3개의 점이 필요합니다.");
+    return;
+  }
+
+  if(measureDraftLayer&&map){
+    map.removeLayer(measureDraftLayer);
+    measureDraftLayer=null;
+  }
+
+  const id=measurementSeq++;
+  let layer;
+  let label;
+  let value;
+
+  if(measureMode==="length"){
+    value=lengthMeters(pts);
+    label=formatLength(value);
+
+    layer=L.polyline(pts,{
+      color:"#2563eb",
+      weight:4,
+      opacity:.95
+    });
+
+    measurements.push({
+      id,
+      type:"length",
+      value,
+      points:pts.map(p=>[p.lat,p.lng]),
+      createdAt:new Date().toISOString()
+    });
+  }else{
+    value=geodesicArea(pts);
+    label=primaryAreaLabel(value);
+
+    layer=L.polygon(pts,{
+      color:"#7c3aed",
+      weight:3,
+      fill:true,
+      fillColor:"#8b5cf6",
+      fillOpacity:.16
+    });
+
+    measurements.push({
+      id,
+      type:"area",
+      value,
+      points:pts.map(p=>[p.lat,p.lng]),
+      createdAt:new Date().toISOString()
+    });
+  }
+
+  layer.bindTooltip(label,{
+    permanent:true,
+    direction:"center",
+    className:"measureTooltip"
+  });
+
+  layer.addTo(measurementLayerGroup);
+  layer.openTooltip();
+
+  measurementLayers.set(id,layer);
+
+  measurePoints=[];
+  renderMeasurementResults();
+
+  const status=document.getElementById("measureStatus");
+  if(status){
+    status.innerText=`${measureModeLabel(measureMode)} 완료 · 같은 모드로 계속 측정할 수 있습니다.\n도구 버튼을 다시 누르면 모드가 종료됩니다.`;
+  }
+
+  const live=document.getElementById("measureLive");
+  if(live)live.innerText=`완료: ${label}`;
+}
+
+function checkpointPopupHtml(cp){
+  const lines=[
+    `<b>${cp.name}</b>`,
+    `위도: ${cp.lat.toFixed(7)}`,
+    `경도: ${cp.lon.toFixed(7)}`
+  ];
+
+  if(cp.dem){
+    lines.push(`단일 셀: ${Number.isFinite(cp.dem.z)?cp.dem.z.toFixed(3)+" m":"-"}`);
+    lines.push(`3×3 평균: ${Number.isFinite(cp.dem.avg3)?cp.dem.avg3.toFixed(3)+" m":"-"}`);
+    lines.push(`5×5 평균: ${Number.isFinite(cp.dem.avg5)?cp.dem.avg5.toFixed(3)+" m":"-"}`);
+    lines.push(`보간: ${Number.isFinite(cp.dem.bilinear)?cp.dem.bilinear.toFixed(3)+" m":"-"}`);
+  }else{
+    lines.push("DEM: 미선택");
+  }
+
+  return lines.join("<br>");
+}
+
+async function addCheckpointAt(latlng){
+  const number=checkpointSeq++;
+  const name=`CP-${String(number).padStart(3,"0")}`;
+
+  let demData=null;
+
+  // 현재 DEM 정보 패널도 함께 갱신
+  await samplePoint(latlng.lat,latlng.lng);
+
+  if(lastDemSample){
+    demData={
+      x:lastDemSample.x,
+      y:lastDemSample.y,
+      row:lastDemSample.row,
+      col:lastDemSample.col,
+      z:lastDemSample.z,
+      avg3:lastDemSample.avg3,
+      avg5:lastDemSample.avg5,
+      bilinear:lastDemSample.bilinear,
+      crs:demCrs||null,
+      demFile:currentDemName()
+    };
+  }
+
+  const id=number;
+  const cp={
+    id,
+    number,
+    name,
+    lat:latlng.lat,
+    lon:latlng.lng,
+    dem:demData,
+    createdAt:new Date().toISOString()
+  };
+
+  checkpoints.push(cp);
+
+  const icon=L.divIcon({
+    className:"",
+    html:`<div class="checkpointIcon">${number}</div>`,
+    iconSize:[28,28],
+    iconAnchor:[14,14]
+  });
+
+  const cpMarker=L.marker([cp.lat,cp.lon],{icon});
+  cpMarker.bindPopup(checkpointPopupHtml(cp));
+  cpMarker.addTo(checkpointLayerGroup);
+
+  checkpointLayers.set(id,cpMarker);
+  renderMeasurementResults();
+
+  const status=document.getElementById("measureStatus");
+  if(status)status.innerText=`체크포인트 ${name} 추가 완료 · 계속 클릭해서 추가할 수 있습니다.\n● 버튼을 다시 누르면 모드가 종료됩니다.`;
+
+  const live=document.getElementById("measureLive");
+  if(live){
+    live.innerText=demData&&Number.isFinite(demData.avg3)
+      ?`${name} · 3×3 평균 ${demData.avg3.toFixed(3)} m`
+      :`${name} · ${cp.lat.toFixed(6)}, ${cp.lon.toFixed(6)}`;
+  }
+}
+
+function deleteMeasurement(id){
+  measurements=measurements.filter(r=>Number(r.id)!==Number(id));
+
+  const layer=measurementLayers.get(Number(id));
+  if(layer&&measurementLayerGroup)measurementLayerGroup.removeLayer(layer);
+
+  measurementLayers.delete(Number(id));
+  renderMeasurementResults();
+}
+
+function deleteCheckpoint(id){
+  checkpoints=checkpoints.filter(r=>Number(r.id)!==Number(id));
+
+  const layer=checkpointLayers.get(Number(id));
+  if(layer&&checkpointLayerGroup)checkpointLayerGroup.removeLayer(layer);
+
+  checkpointLayers.delete(Number(id));
+  renderMeasurementResults();
+}
+
+function clearAllMeasurements(){
+  clearMeasureDraft();
+
+  measurements=[];
+  checkpoints=[];
+
+  measurementLayers.clear();
+  checkpointLayers.clear();
+
+  if(measurementLayerGroup)measurementLayerGroup.clearLayers();
+  if(checkpointLayerGroup)checkpointLayerGroup.clearLayers();
+
+  measurementSeq=1;
+  checkpointSeq=1;
+
+  renderMeasurementResults();
+
+  const status=document.getElementById("measureStatus");
+  if(status){
+    status.innerText=measureMode
+      ?`${measureModeLabel(measureMode)} 모드 ON · 기존 결과를 모두 삭제했습니다.`
+      :"측정 결과를 모두 삭제했습니다.";
+  }
+}
+
+function renderMeasurementResults(){
+  const el=document.getElementById("measureList");
+  if(!el)return;
+
+  const total=measurements.length+checkpoints.length;
+
+  if(!total){
+    el.innerHTML='<div class="help" style="padding-top:8px">저장된 측정 결과가 없습니다.</div>';
+    return;
+  }
+
+  const rows=[];
+
+  measurements.forEach(r=>{
+    if(r.type==="length"){
+      rows.push(`
+        <div class="measureItem">
+          <div class="measureItemHead">
+            <span>↔ 길이 #${r.id}</span>
+            <button class="measureDelete" onclick="deleteMeasurement(${r.id})">삭제</button>
+          </div>
+          <div>${formatLength(r.value)}</div>
+          <div>경유점 ${r.points.length}개</div>
+        </div>
+      `);
+    }else{
+      rows.push(`
+        <div class="measureItem">
+          <div class="measureItemHead">
+            <span>▱ 면적 #${r.id}</span>
+            <button class="measureDelete" onclick="deleteMeasurement(${r.id})">삭제</button>
+          </div>
+          <div>${formatArea(r.value)}</div>
+          <div>경계점 ${r.points.length}개</div>
+        </div>
+      `);
+    }
+  });
+
+  checkpoints.forEach(cp=>{
+    const z=cp.dem&&Number.isFinite(cp.dem.avg3)
+      ?`3×3 ${cp.dem.avg3.toFixed(3)} m`
+      :"DEM 값 없음";
+
+    rows.push(`
+      <div class="measureItem">
+        <div class="measureItemHead">
+          <span>● ${cp.name}</span>
+          <button class="measureDelete" onclick="deleteCheckpoint(${cp.id})">삭제</button>
+        </div>
+        <div>${cp.lat.toFixed(6)}, ${cp.lon.toFixed(6)}</div>
+        <div>${z}</div>
+      </div>
+    `);
+  });
+
+  el.innerHTML=rows.join("");
+}
+
+window.toggleMeasureMode=toggleMeasureMode;
+window.finishCurrentMeasurement=finishCurrentMeasurement;
+window.clearAllMeasurements=clearAllMeasurements;
+window.deleteMeasurement=deleteMeasurement;
+window.deleteCheckpoint=deleteCheckpoint;
+
+
 function toggleRight(){
   rightPanel.classList.toggle("collapsed");
   const btn=rightPanel.querySelector(".collapseBtn");
@@ -2400,6 +2973,8 @@ if(vworldBtn){
   });
 }
 initMap();
+syncMeasureModeUi();
+renderMeasurementResults();
 if(document.getElementById("sampleDisplayMode"))sampleDisplayMode.value="avg3";
 updateHeatLegend();
 updateValidationTarget();
