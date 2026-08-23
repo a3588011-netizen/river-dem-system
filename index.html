@@ -212,6 +212,18 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
   width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;
   border-radius:8px;font-size:12px;font-weight:800;background:white;color:#0f172a
 }
+
+#print3dModal input:not([disabled]){
+  user-select:text;
+  -webkit-user-select:text;
+  cursor:text;
+  pointer-events:auto;
+}
+#print3dModal input:focus{
+  outline:2px solid rgba(37,99,235,.28);
+  outline-offset:1px;
+}
+
 .print3dActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
 .print3dBtn{
   border:0;border-radius:9px;padding:10px 8px;font-size:12px;font-weight:900;
@@ -535,7 +547,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
 
 
-<div id="print3dModal">
+<div id="print3dModal" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" onkeydown="event.stopPropagation()">
   <div class="modalBox">
     <h2>3D 지형 모형 만들기</h2>
     <div class="print3dHelp">
@@ -592,15 +604,37 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
       <label class="print3dQrRow">
         <input id="print3dQrEnabled" type="checkbox" checked onchange="updatePrint3dInfo()">
-        QR 스티커 세트 같이 만들기
+        QR 결과 페이지 + 스티커 세트 같이 만들기
       </label>
 
       <div class="print3dField full">
-        <label>QR 연결 주소 · 최대 106 UTF-8 bytes</label>
-        <input id="print3dQrLink" type="text" inputmode="url"
-          placeholder="https://..."
+        <label>결과 페이지 기본 주소</label>
+        <input id="print3dQrBaseUrl" type="text" inputmode="url"
+          value="https://a3588011-netizen.github.io/river-dem-system/results/"
           autocomplete="off" spellcheck="false"
-          oninput="updatePrint3dInfo()">
+          onkeydown="event.stopPropagation()"
+          onkeyup="event.stopPropagation()"
+          onkeypress="event.stopPropagation()"
+          onpaste="event.stopPropagation()"
+          oninput="event.stopPropagation();updatePrint3dQrFinalUrl();updatePrint3dInfo()"
+          onblur="normalizePrint3dQrBaseUrl();updatePrint3dQrFinalUrl();updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>결과 ID · 영문/숫자/-/_</label>
+        <input id="print3dQrResultId" type="text" inputmode="text"
+          placeholder="34803-20260824-0217"
+          autocomplete="off" spellcheck="false"
+          onkeydown="event.stopPropagation()"
+          onkeyup="event.stopPropagation()"
+          onkeypress="event.stopPropagation()"
+          onpaste="event.stopPropagation()"
+          oninput="event.stopPropagation();sanitizePrint3dQrResultIdInput(this);updatePrint3dQrFinalUrl();updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>QR 최종 주소 · 자동 생성</label>
+        <input id="print3dQrFinalUrl" type="text" value="" readonly>
       </div>
 
       <div class="print3dField">
@@ -643,7 +677,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     <div class="print3dActions">
       <button class="print3dBtn secondary" onclick="closePrint3dModal()">닫기</button>
       <button class="print3dBtn" onclick="exportPrint3dStl()">지형 STL만 생성</button>
-      <button class="print3dBtn full" onclick="exportPrint3dQrSet()">STL + QR 세트 ZIP 생성</button>
+      <button class="print3dBtn full" onclick="exportPrint3dQrSet()">최종 3D + QR 결과패키지 ZIP 생성</button>
     </div>
   </div>
 </div>
@@ -5696,9 +5730,10 @@ window.loadRiverDemProject=loadRiverDemProject;
 
 function handlePrint3dNumericInput(el){
   if(!el)return;
+  if(el.isComposing)return;
 
-  // 한글 IME/복붙이 들어와도 숫자, 소수점, 앞쪽 - 만 남김.
-  // 입력 중 빈 문자열과 끝의 소수점은 그대로 허용해서 키보드 입력이 끊기지 않게 함.
+  // 숫자 입력 중에는 값 전체 재선택/강제 blur 없이 현재 caret 입력을 유지한다.
+  // 숫자, 소수점, 앞쪽 - 만 남긴다.
   let value=String(el.value??"")
     .replace(/,/g,".")
     .replace(/[^\d.\-]/g,"");
@@ -5744,6 +5779,45 @@ function getPrint3dNumericValue(id,fallback){
   return Number.isFinite(value)?value:Number(fallback);
 }
 
+
+function bindPrint3dEditableInputs(){
+  const modal=document.getElementById("print3dModal");
+  if(!modal)return;
+
+  const inputs=modal.querySelectorAll(
+    'input:not([disabled]), textarea'
+  );
+
+  inputs.forEach(el=>{
+    if(el.dataset.print3dTypingBound==="1")return;
+    el.dataset.print3dTypingBound="1";
+
+    // Leaflet/Electron 상위 단축키/지도 키보드 핸들러로
+    // 키 입력이 전파되지 않게 하되, 기본 입력 동작은 막지 않는다.
+    [
+      "keydown",
+      "keyup",
+      "keypress",
+      "compositionstart",
+      "compositionupdate",
+      "compositionend",
+      "beforeinput",
+      "input",
+      "paste"
+    ].forEach(type=>{
+      el.addEventListener(type,e=>{
+        e.stopPropagation();
+      });
+    });
+
+    ["pointerdown","mousedown","click","dblclick"].forEach(type=>{
+      el.addEventListener(type,e=>{
+        e.stopPropagation();
+      });
+    });
+  });
+}
+
 function openPrint3dModal(){
   const modal=document.getElementById("print3dModal");
   if(!modal)return;
@@ -5754,6 +5828,7 @@ function openPrint3dModal(){
   }
 
   syncPrint3dInterpolationUi();
+  ensurePrint3dQrResultDefaults();
   updatePrint3dInfo();
   modal.style.display="flex";
 
@@ -5765,15 +5840,21 @@ function openPrint3dModal(){
     "print3dZExag",
     "print3dQrPlateMm",
     "print3dQrStickerMm",
-    "print3dQrRecessMm"
+    "print3dQrRecessMm",
+    "print3dQrBaseUrl",
+    "print3dQrResultId"
   ].forEach(id=>{
     const el=document.getElementById(id);
     if(!el||el.dataset.print3dInputBound==="1")return;
 
     el.dataset.print3dInputBound="1";
-    el.addEventListener("focus",()=>setTimeout(()=>el.select(),0));
+
+    // 입력 중 값 전체가 다시 선택되는 현상을 막기 위해
+    // focus 시 강제 select()는 사용하지 않는다.
     el.addEventListener("wheel",e=>e.preventDefault(),{passive:false});
   });
+
+  bindPrint3dEditableInputs();
 }
 
 function closePrint3dModal(){
@@ -6058,7 +6139,7 @@ function updatePrint3dInfo(){
     `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}\n`+
     `Z축 과장: ${zExag.toFixed(2)}× · 바닥: ${baseMm.toFixed(1)} mm`+
     (()=>{const qr=print3dQrSettings();return qr.enabled
-      ?`\nQR 세트: ${qr.plateSizeMm.toFixed(1)} mm 트레이 · ${qr.stickerSizeMm.toFixed(1)} mm 스티커 · 홈 ${qr.recessDepthMm.toFixed(1)} mm · 링크 ${qr.byteLength}/106 bytes`
+      ?`\nQR 결과: ${qr.resultId||"ID 없음"} · ${qr.byteLength}/106 bytes\n${qr.link||"주소 미완성"}`
       :"\nQR 세트: 사용 안 함";})();
 }
 
@@ -6881,13 +6962,463 @@ function print3dDownloadBytes(bytes,fileName,mimeType){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+
+function print3dAsciiSafeId(value){
+  return String(value||"")
+    .normalize("NFKD")
+    .replace(/[^\x00-\x7F]/g,"")
+    .replace(/[^A-Za-z0-9_-]+/g,"-")
+    .replace(/^-+|-+$/g,"")
+    .replace(/-{2,}/g,"-")
+    .slice(0,48);
+}
+
+function print3dTimestampId(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,"0");
+
+  return (
+    String(d.getFullYear())+
+    pad(d.getMonth()+1)+
+    pad(d.getDate())+
+    "-"+
+    pad(d.getHours())+
+    pad(d.getMinutes())
+  );
+}
+
+function print3dDefaultResultId(){
+  const demBase=String(currentDemName()||"DEM")
+    .replace(/\.[^.]+$/,"");
+
+  const safeDem=
+    print3dAsciiSafeId(demBase)||
+    "dem";
+
+  return `${safeDem}-${print3dTimestampId()}`.toLowerCase();
+}
+
+function sanitizePrint3dQrResultIdInput(el){
+  if(!el)return;
+
+  const before=String(el.value||"");
+  const after=print3dAsciiSafeId(before).toLowerCase();
+
+  if(before!==after){
+    const pos=Math.min(
+      after.length,
+      Number(el.selectionStart??after.length)
+    );
+
+    el.value=after;
+
+    try{
+      el.setSelectionRange(pos,pos);
+    }catch(e){}
+  }
+}
+
+function normalizePrint3dQrBaseUrl(){
+  const el=document.getElementById("print3dQrBaseUrl");
+  if(!el)return;
+
+  let value=String(el.value||"").trim();
+
+  if(!value){
+    value="https://a3588011-netizen.github.io/river-dem-system/results/";
+  }
+
+  if(!/^https?:\/\//i.test(value)){
+    value="https://"+value.replace(/^\/+/,"");
+  }
+
+  value=value.replace(/\/+$/,"")+"/";
+  el.value=value;
+}
+
+function ensurePrint3dQrResultDefaults(){
+  const base=document.getElementById("print3dQrBaseUrl");
+  const id=document.getElementById("print3dQrResultId");
+
+  if(base&&!String(base.value||"").trim()){
+    base.value="https://a3588011-netizen.github.io/river-dem-system/results/";
+  }
+
+  normalizePrint3dQrBaseUrl();
+
+  if(id&&!String(id.value||"").trim()){
+    id.value=print3dDefaultResultId();
+  }
+
+  if(id){
+    sanitizePrint3dQrResultIdInput(id);
+  }
+
+  updatePrint3dQrFinalUrl();
+}
+
+function updatePrint3dQrFinalUrl(){
+  const baseEl=document.getElementById("print3dQrBaseUrl");
+  const idEl=document.getElementById("print3dQrResultId");
+  const finalEl=document.getElementById("print3dQrFinalUrl");
+
+  if(!finalEl)return "";
+
+  let base=String(baseEl?.value||"").trim();
+  const resultId=print3dAsciiSafeId(
+    idEl?.value||""
+  ).toLowerCase();
+
+  if(base&&!/\/$/.test(base)){
+    base+="/";
+  }
+
+  const url=
+    base&&resultId
+      ?base+resultId+"/"
+      :"";
+
+  finalEl.value=url;
+  return url;
+}
+
+function print3dSplitLegacyQrLink(link){
+  const value=String(link||"").trim();
+  if(!value)return null;
+
+  try{
+    const u=new URL(value);
+    const parts=u.pathname
+      .split("/")
+      .filter(Boolean);
+
+    if(!parts.length)return null;
+
+    const id=print3dAsciiSafeId(
+      parts.pop()
+    ).toLowerCase();
+
+    if(!id)return null;
+
+    u.pathname=
+      "/"+
+      (parts.length?parts.join("/")+"/":"");
+
+    u.search="";
+    u.hash="";
+
+    return {
+      baseUrl:u.toString().replace(/\/+$/,"")+"/",
+      resultId:id
+    };
+  }catch(e){
+    return null;
+  }
+}
+
+function print3dHtmlEscape(value){
+  return String(value??"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&#39;");
+}
+
+function print3dJsonForScript(value){
+  return JSON.stringify(value)
+    .replace(/</g,"\\u003c")
+    .replace(/>/g,"\\u003e")
+    .replace(/&/g,"\\u0026")
+    .replace(/\u2028/g,"\\u2028")
+    .replace(/\u2029/g,"\\u2029");
+}
+
+function buildPrint3dResultData(options={}){
+  const project=options.project||buildRiverDemProject();
+  const plan=options.plan||print3dMeshPlan();
+  const terrain=options.terrain||{};
+  const dataStats=options.dataStats||{};
+  const qrSettings=options.qrSettings||print3dQrSettings();
+  const fileNames=options.fileNames||{};
+
+  const xy=project?.xySection?.result||null;
+
+  return {
+    schema:"RiverDEM Result Page",
+    version:1,
+    generatedAt:new Date().toISOString(),
+    resultId:qrSettings.resultId,
+    resultUrl:qrSettings.link,
+
+    river:{
+      name:project?.river?.[0]||"미선택",
+      region:riverRegion(project?.river)||"",
+      basin:riverBasin(project?.river)||"",
+      code:riverCode(project?.river)||""
+    },
+
+    dem:project?.dem||null,
+
+    map:project?.map||null,
+
+    model:{
+      actualWidthM:Number(plan?.dims?.widthM||0),
+      actualHeightM:Number(plan?.dims?.heightM||0),
+      modelWidthMm:Number(plan?.widthMm||0),
+      modelHeightMm:Number(plan?.modelHeightMm||0),
+      baseMm:Number(project?.print3d?.baseMm||0),
+      zExag:Number(project?.print3d?.zExag||0),
+      surfaceMode:print3dSurfaceModeLabel(plan),
+      cols:Number(plan?.cols||0),
+      rows:Number(plan?.rows||0),
+      triangles:Number(terrain?.triangleCount||0),
+      elevationMin:Number.isFinite(Number(dataStats?.min))
+        ?Number(dataStats.min)
+        :null,
+      elevationMax:Number.isFinite(Number(dataStats?.max))
+        ?Number(dataStats.max)
+        :null
+    },
+
+    counts:{
+      measurements:Array.isArray(project?.measurements)
+        ?project.measurements.length
+        :0,
+      checkpoints:Array.isArray(project?.checkpoints)
+        ?project.checkpoints.length
+        :0,
+      validation:Array.isArray(project?.validation?.records)
+        ?project.validation.records.length
+        :0
+    },
+
+    xySection:xy,
+
+    files:{
+      terrain:fileNames.terrain||"",
+      qrTray:fileNames.qrTray||"",
+      qrPng:fileNames.qrPng||"",
+      analysis:fileNames.analysis||"",
+      project:fileNames.project||"",
+      resultJson:fileNames.resultJson||"result.json"
+    }
+  };
+}
+
+function buildPrint3dResultPageHtml(resultData){
+  const d=resultData||{};
+  const riverName=print3dHtmlEscape(
+    d.river?.name||"RiverDEM"
+  );
+  const demName=print3dHtmlEscape(
+    d.dem?.fileName||"DEM"
+  );
+  const crs=print3dHtmlEscape(
+    d.dem?.crs||"-"
+  );
+
+  const resX=Math.abs(Number(d.dem?.pixelX||0));
+  const resY=Math.abs(Number(d.dem?.pixelY||0));
+
+  const dataJson=print3dJsonForScript(d);
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${riverName} · RiverDEM 결과</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f7fb;color:#0f172a;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans KR",sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:24px}
+.hero{background:linear-gradient(135deg,#0f766e,#2563eb);color:#fff;border-radius:18px;padding:26px;box-shadow:0 14px 34px rgba(15,23,42,.15)}
+.hero h1{margin:0 0 8px;font-size:30px}
+.hero p{margin:0;opacity:.9}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;box-shadow:0 5px 16px rgba(15,23,42,.05)}
+.card h2{margin:0 0 12px;font-size:17px}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:7px;font-size:14px}
+.kv b{color:#475569}
+.files{display:flex;flex-wrap:wrap;gap:8px}
+.files a{display:inline-block;text-decoration:none;background:#0f766e;color:#fff;border-radius:9px;padding:10px 12px;font-weight:700;font-size:13px}
+.files a.secondary{background:#475569}
+.qr{max-width:220px;width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:8px;background:#fff}
+.chart{width:100%;height:210px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.note{margin-top:16px;font-size:12px;color:#64748b;line-height:1.6}
+.full{grid-column:1/-1}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.kv{grid-template-columns:115px 1fr}.hero h1{font-size:24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <h1>${riverName}</h1>
+    <p>RiverDEM 3D 지형 · 분석 결과 페이지</p>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>DEM 정보</h2>
+      <div class="kv">
+        <b>파일</b><span>${demName}</span>
+        <b>CRS</b><span>${crs}</span>
+        <b>해상도</b><span>${resX?resX.toFixed(2):"-"} × ${resY?resY.toFixed(2):"-"} m</span>
+        <b>생성 시각</b><span>${print3dHtmlEscape(d.generatedAt||"-")}</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3D 모형 정보</h2>
+      <div class="kv">
+        <b>실제 영역</b><span>${Number(d.model?.actualWidthM||0).toFixed(1)} × ${Number(d.model?.actualHeightM||0).toFixed(1)} m</span>
+        <b>모형 크기</b><span>${Number(d.model?.modelWidthMm||0).toFixed(1)} × ${Number(d.model?.modelHeightMm||0).toFixed(1)} mm</span>
+        <b>Z축 과장</b><span>${Number(d.model?.zExag||0).toFixed(2)}×</span>
+        <b>표면</b><span>${print3dHtmlEscape(d.model?.surfaceMode||"-")}</span>
+        <b>메시</b><span>${Number(d.model?.cols||0)} × ${Number(d.model?.rows||0)} · ${Number(d.model?.triangles||0).toLocaleString()} triangles</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>분석 현황</h2>
+      <div class="kv">
+        <b>측정 결과</b><span>${Number(d.counts?.measurements||0)}개</span>
+        <b>체크포인트</b><span>${Number(d.counts?.checkpoints||0)}개</span>
+        <b>검증 기록</b><span>${Number(d.counts?.validation||0)}개</span>
+        <b>X/Y 단면</b><span>${d.xySection?"있음":"없음"}</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>QR</h2>
+      ${d.files?.qrPng?`<img class="qr" src="${print3dHtmlEscape(d.files.qrPng)}" alt="RiverDEM QR">`:"<p>QR 이미지 없음</p>"}
+      <div class="note">이 QR이 가리키는 주소: ${print3dHtmlEscape(d.resultUrl||"")}</div>
+    </section>
+
+    <section class="card full">
+      <h2>다운로드</h2>
+      <div class="files">
+        ${d.files?.analysis?`<a href="${print3dHtmlEscape(d.files.analysis)}" download>분석 Excel</a>`:""}
+        ${d.files?.project?`<a href="${print3dHtmlEscape(d.files.project)}" download>RiverDEM 프로젝트</a>`:""}
+        ${d.files?.terrain?`<a class="secondary" href="${print3dHtmlEscape(d.files.terrain)}" download>지형 STL</a>`:""}
+        ${d.files?.qrTray?`<a class="secondary" href="${print3dHtmlEscape(d.files.qrTray)}" download>QR 트레이 STL</a>`:""}
+        ${d.files?.resultJson?`<a class="secondary" href="${print3dHtmlEscape(d.files.resultJson)}" download>결과 JSON</a>`:""}
+      </div>
+    </section>
+
+    <section class="card full">
+      <h2>X/Y 단면 그래프</h2>
+      <canvas id="xChart" class="chart"></canvas>
+      <div style="height:12px"></div>
+      <canvas id="yChart" class="chart"></canvas>
+    </section>
+  </div>
+
+  <div class="note">
+    3D 출력용 Bilinear 보간은 표면을 부드럽게 만드는 시각적 재표본화이며 원본 DEM의 실제 공간 정확도를 향상시키지 않습니다.
+  </div>
+</div>
+
+<script>
+const RESULT=${dataJson};
+
+function drawProfile(canvasId,rows,label){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+
+  const data=(Array.isArray(rows)?rows:[])
+    .filter(r=>Number.isFinite(Number(r.offset))&&Number.isFinite(Number(r.z)))
+    .map(r=>({x:Number(r.offset),y:Number(r.z)}));
+
+  const rect=canvas.getBoundingClientRect();
+  const w=Math.max(320,Math.round(rect.width||900));
+  const h=210;
+  const dpr=Math.max(1,window.devicePixelRatio||1);
+
+  canvas.width=w*dpr;
+  canvas.height=h*dpr;
+
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle="#334155";
+  ctx.font="12px sans-serif";
+  ctx.fillText(label,12,18);
+
+  if(data.length<2){
+    ctx.fillStyle="#94a3b8";
+    ctx.fillText("단면 데이터가 없습니다.",12,45);
+    return;
+  }
+
+  const left=48,right=16,top=30,bottom=32;
+  const pw=w-left-right;
+  const ph=h-top-bottom;
+
+  let minX=Math.min(...data.map(v=>v.x));
+  let maxX=Math.max(...data.map(v=>v.x));
+  let minY=Math.min(...data.map(v=>v.y));
+  let maxY=Math.max(...data.map(v=>v.y));
+
+  if(maxX===minX)maxX=minX+1;
+  if(maxY===minY){maxY+=.5;minY-=.5}
+
+  const pad=(maxY-minY)*.08;
+  minY-=pad;
+  maxY+=pad;
+
+  const sx=x=>left+(x-minX)/(maxX-minX)*pw;
+  const sy=y=>top+(maxY-y)/(maxY-minY)*ph;
+
+  ctx.strokeStyle="#cbd5e1";
+  ctx.strokeRect(left,top,pw,ph);
+
+  ctx.strokeStyle="#0f766e";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+
+  data.forEach((p,i)=>{
+    const x=sx(p.x),y=sy(p.y);
+    if(i===0)ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+
+  ctx.stroke();
+
+  ctx.fillStyle="#64748b";
+  ctx.font="11px sans-serif";
+  ctx.fillText(minX.toFixed(0)+" m",left,h-9);
+  ctx.fillText(maxX.toFixed(0)+" m",w-right-42,h-9);
+  ctx.fillText(maxY.toFixed(2)+" m",4,top+5);
+  ctx.fillText(minY.toFixed(2)+" m",4,top+ph);
+}
+
+drawProfile("xChart",RESULT.xySection?.xRows,"X 횡단면");
+drawProfile("yChart",RESULT.xySection?.yRows,"Y 종단면");
+<\/script>
+</body>
+</html>`;
+}
+
 function print3dQrSettings(){
   const enabled=
     document.getElementById("print3dQrEnabled")?.checked!==false;
 
-  const link=String(
-    document.getElementById("print3dQrLink")?.value||""
+  const baseUrl=String(
+    document.getElementById("print3dQrBaseUrl")?.value||""
   ).trim();
+
+  const resultId=print3dAsciiSafeId(
+    document.getElementById("print3dQrResultId")?.value||""
+  ).toLowerCase();
+
+  const link=updatePrint3dQrFinalUrl();
 
   const plateSizeMm=getPrint3dNumericValue("print3dQrPlateMm",35);
   const stickerSizeMm=getPrint3dNumericValue("print3dQrStickerMm",30);
@@ -6896,6 +7427,8 @@ function print3dQrSettings(){
 
   return {
     enabled,
+    baseUrl,
+    resultId,
     link,
     plateSizeMm,
     stickerSizeMm,
@@ -6903,7 +7436,6 @@ function print3dQrSettings(){
     byteLength
   };
 }
-
 async function exportPrint3dQrSet(){
   if(print3dBusy)return;
 
@@ -6917,31 +7449,44 @@ async function exportPrint3dQrSet(){
     return;
   }
 
+  ensurePrint3dQrResultDefaults();
+
   const qrSettings=print3dQrSettings();
 
   if(!qrSettings.enabled){
-    alert("QR 스티커 세트 옵션을 켜주세요.");
+    alert("QR 결과 페이지 + 스티커 세트 옵션을 켜주세요.");
+    return;
+  }
+
+  if(!qrSettings.resultId){
+    alert("결과 ID를 입력해주세요.");
+    return;
+  }
+
+  if(!qrSettings.baseUrl){
+    alert("결과 페이지 기본 주소를 입력해주세요.");
     return;
   }
 
   if(!qrSettings.link){
-    alert("QR 연결 주소를 입력해주세요.");
+    alert("QR 최종 주소를 만들지 못했습니다.");
     return;
   }
 
   if(qrSettings.byteLength>106){
     alert(
-      `QR 링크가 너무 깁니다. 현재 ${qrSettings.byteLength} bytes / 최대 106 bytes입니다. 짧은 주소를 사용해주세요.`
+      `QR 최종 주소가 너무 깁니다. 현재 ${qrSettings.byteLength} bytes / 최대 106 bytes입니다. 기본 주소나 결과 ID를 짧게 해주세요.`
     );
     return;
   }
 
   if(!/^https?:\/\//i.test(qrSettings.link)){
-    alert("QR 연결 주소는 http:// 또는 https://로 시작해주세요.");
+    alert("결과 페이지 주소는 http:// 또는 https://로 시작해야 합니다.");
     return;
   }
 
   const plan=print3dMeshPlan();
+
   if(!plan){
     alert("선택 영역이 너무 작거나 DEM 범위 밖입니다.");
     return;
@@ -6971,16 +7516,21 @@ async function exportPrint3dQrSet(){
   const info=document.getElementById("print3dInfo");
 
   try{
-    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n1/4 DEM 읽기";
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n1/6 DEM 읽기";
 
     const data=await readPrint3dRaster(plan);
-    const scaleMmPerMeter=plan.dims.widthM>0?widthMm/plan.dims.widthM:0;
+
+    const scaleMmPerMeter=
+      plan.dims.widthM>0
+        ?widthMm/plan.dims.widthM
+        :0;
 
     if(!Number.isFinite(scaleMmPerMeter)||scaleMmPerMeter<=0){
       throw new Error("3D 모형 축척을 계산하지 못했습니다.");
     }
 
-    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n2/4 지형 STL 생성";
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n2/6 지형 STL 생성";
+
     await new Promise(resolve=>setTimeout(resolve,0));
 
     const terrain=buildBinaryTerrainStl(
@@ -6997,34 +7547,124 @@ async function exportPrint3dQrSet(){
       }
     );
 
-    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n3/4 QR PNG · 스티커 트레이 생성";
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n3/6 QR PNG · 트레이 생성";
 
-    const qrPng=await print3dQrPngBytes(qrSettings.link);
+    const qrPng=await print3dQrPngBytes(
+      qrSettings.link
+    );
+
     const qrTray=buildPrint3dQrTrayStl({
       plateSizeMm:qrSettings.plateSizeMm,
       stickerSizeMm:qrSettings.stickerSizeMm,
       recessDepthMm:qrSettings.recessDepthMm
     });
 
-    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n4/4 ZIP 묶기";
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n4/6 Excel · 프로젝트 파일 생성";
 
-    const river=currentRiverName()==="미선택"?"RiverDEM":currentRiverName();
-    const demBase=String(currentDemName()||"DEM").replace(/\.[^.]+$/,"");
-    const baseName=projectFileSafeName(`${river}_${demBase}_3Dset`);
-    const terrainName=projectFileSafeName(`${river}_${demBase}_terrain`)+".stl";
-    const qrPlateName=projectFileSafeName(`${river}_${demBase}_QR_tray`)+".stl";
-    const qrPngName=projectFileSafeName(`${river}_${demBase}_QR`)+".png";
-    const readmeName="README_RiverDEM_3D.txt";
+    const project=buildRiverDemProject();
+    const projectJson=
+      JSON.stringify(project,null,2);
 
-    const scaleDenom=plan.dims.widthM*1000/widthMm;
-    const reliefMm=(data.stats.max-data.stats.min)*scaleMmPerMeter*zExag;
-    const totalHeightMm=baseMm+reliefMm;
+    const analysisXlsx=
+      buildRiverDemXlsxBytes(
+        buildRiverDemAnalysisSheets()
+      );
+
+    const river=
+      currentRiverName()==="미선택"
+        ?"RiverDEM"
+        :currentRiverName();
+
+    const demBase=String(
+      currentDemName()||"DEM"
+    ).replace(/\.[^.]+$/,"");
+
+    const safeBase=
+      projectFileSafeName(
+        `${river}_${demBase}`
+      );
+
+    const terrainName=
+      projectFileSafeName(`${safeBase}_terrain`)+".stl";
+
+    const qrTrayName=
+      projectFileSafeName(`${safeBase}_QR_tray`)+".stl";
+
+    const qrPngName=
+      projectFileSafeName(`${safeBase}_QR`)+".png";
+
+    const analysisName=
+      projectFileSafeName(`${safeBase}_analysis`)+".xlsx";
+
+    const projectName=
+      projectFileSafeName(`${safeBase}`)+".riverdem";
+
+    const resultJsonName="result.json";
+
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n5/6 결과 웹페이지 생성";
+
+    const resultData=buildPrint3dResultData({
+      project,
+      plan,
+      terrain,
+      dataStats:data.stats,
+      qrSettings,
+      fileNames:{
+        terrain:terrainName,
+        qrTray:qrTrayName,
+        qrPng:qrPngName,
+        analysis:analysisName,
+        project:projectName,
+        resultJson:resultJsonName
+      }
+    });
+
+    const resultJson=
+      JSON.stringify(resultData,null,2);
+
+    const resultHtml=
+      buildPrint3dResultPageHtml(resultData);
+
+    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n6/6 GitHub Pages 구조로 ZIP 묶기";
+
+    const scaleDenom=
+      plan.dims.widthM*1000/widthMm;
+
+    const reliefMm=
+      (data.stats.max-data.stats.min)*
+      scaleMmPerMeter*
+      zExag;
+
+    const totalHeightMm=
+      baseMm+reliefMm;
+
+    const webRoot=
+      `github-pages/results/${qrSettings.resultId}/`;
 
     const readme=
-`RiverDEM 3D 출력 세트
+`RiverDEM 최종 3D + QR 결과패키지
 
-[지형 STL]
-파일: ${terrainName}
+[QR 최종 주소]
+${qrSettings.link}
+
+[GitHub Pages 업로드 구조]
+이 ZIP의 github-pages 폴더 안에 있는 results 폴더를
+GitHub Pages가 배포되는 저장소 루트에 그대로 업로드하세요.
+
+업로드 후 주소:
+${qrSettings.link}
+
+폴더:
+results/${qrSettings.resultId}/
+  index.html
+  result.json
+  ${analysisName}
+  ${projectName}
+  ${terrainName}
+  ${qrTrayName}
+  ${qrPngName}
+
+[3D 지형]
 실제 영역: ${plan.dims.widthM.toFixed(1)} × ${plan.dims.heightM.toFixed(1)} m
 모형 크기: ${widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} × ${totalHeightMm.toFixed(1)} mm
 수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}
@@ -7033,61 +7673,93 @@ Z축 과장: ${zExag.toFixed(2)}×
 메시: ${plan.cols} × ${plan.rows}
 Triangles: ${terrain.triangleCount.toLocaleString()}
 
-[QR 스티커]
-파일: ${qrPngName}
-연결 주소: ${qrSettings.link}
-QR: Version 5-L · 37×37 modules
+[QR]
+Version 5-L · 37×37 modules
+주소 길이: ${qrSettings.byteLength}/106 UTF-8 bytes
 PNG: ${qrPng.pixelSize} × ${qrPng.pixelSize} px
-Quiet zone 포함: ${qrPng.moduleCount} × ${qrPng.moduleCount} modules
-권장 인쇄 크기: ${qrSettings.stickerSizeMm.toFixed(1)} × ${qrSettings.stickerSizeMm.toFixed(1)} mm
-주의: QR PNG의 흰색 바깥 여백(quiet zone)을 자르지 마세요.
-
-[QR 스티커 트레이 STL]
-파일: ${qrPlateName}
+권장 스티커: ${qrSettings.stickerSizeMm.toFixed(1)} × ${qrSettings.stickerSizeMm.toFixed(1)} mm
 트레이: ${qrSettings.plateSizeMm.toFixed(1)} × ${qrSettings.plateSizeMm.toFixed(1)} × ${qrTray.thickness.toFixed(1)} mm
-스티커 자리: ${qrSettings.stickerSizeMm.toFixed(1)} × ${qrSettings.stickerSizeMm.toFixed(1)} mm
 홈 깊이: ${qrSettings.recessDepthMm.toFixed(1)} mm
-Triangles: ${qrTray.triangleCount}
 
-현재 QR 트레이는 지형 STL과 별도 부품입니다.
-OrcaSlicer에서 두 STL을 함께 배치해 출력한 뒤 트레이를 지형 모형 옆/하단에 부착하는 방식입니다.
+[중요]
+QR 스티커의 흰색 quiet zone을 자르지 마세요.
+3D 출력용 Bilinear 보간은 표면을 부드럽게 만드는 시각적 재표본화이며 실제 DEM 정확도 향상이 아닙니다.
 `;
 
     const zipBytes=excelZipStore([
-      {name:terrainName,data:new Uint8Array(terrain.buffer)},
-      {name:qrPlateName,data:new Uint8Array(qrTray.buffer)},
-      {name:qrPngName,data:qrPng.bytes},
-      {name:readmeName,data:readme}
+      {
+        name:"README_RiverDEM_3D.txt",
+        data:readme
+      },
+      {
+        name:webRoot+"index.html",
+        data:resultHtml
+      },
+      {
+        name:webRoot+resultJsonName,
+        data:resultJson
+      },
+      {
+        name:webRoot+analysisName,
+        data:analysisXlsx
+      },
+      {
+        name:webRoot+projectName,
+        data:projectJson
+      },
+      {
+        name:webRoot+terrainName,
+        data:new Uint8Array(terrain.buffer)
+      },
+      {
+        name:webRoot+qrTrayName,
+        data:new Uint8Array(qrTray.buffer)
+      },
+      {
+        name:webRoot+qrPngName,
+        data:qrPng.bytes
+      }
     ]);
 
-    const zipName=baseName+".zip";
+    const zipName=
+      projectFileSafeName(
+        `${safeBase}_${qrSettings.resultId}_FINAL`
+      )+".zip";
 
-    print3dDownloadBytes(zipBytes,zipName,"application/zip");
+    print3dDownloadBytes(
+      zipBytes,
+      zipName,
+      "application/zip"
+    );
 
     if(info){
       info.innerText=
-        `3D 출력 세트 생성 완료: ${zipName}\n`+
-        `지형 STL: ${terrain.triangleCount.toLocaleString()} triangles\n`+
-        `QR: ${qrSettings.byteLength}/106 bytes · ${qrPng.pixelSize}px PNG\n`+
-        `QR 트레이: ${qrSettings.plateSizeMm.toFixed(1)} mm · 홈 ${qrSettings.recessDepthMm.toFixed(1)} mm\n`+
-        `ZIP 안에 STL 2개 + QR PNG + README가 들어 있습니다.`;
+        `최종 결과패키지 생성 완료: ${zipName}\n`+
+        `QR 주소: ${qrSettings.link}\n`+
+        `웹 결과페이지 + Excel + .riverdem + STL 2개 + QR PNG 포함\n`+
+        `GitHub Pages 업로드 폴더: results/${qrSettings.resultId}/`;
     }
 
     log.innerText=
-      `3D 출력 세트 ZIP 생성 완료\n`+
+      `최종 3D + QR 결과패키지 생성 완료\n`+
       `파일: ${zipName}\n`+
-      `지형: ${plan.cols} × ${plan.rows}\n`+
-      `QR 링크: ${qrSettings.link}`;
+      `QR: ${qrSettings.link}\n`+
+      `웹: results/${qrSettings.resultId}/index.html`;
   }catch(err){
     if(info){
-      info.innerText="3D 출력 세트 생성 실패: "+(err?.message||String(err));
+      info.innerText=
+        "최종 결과패키지 생성 실패: "+
+        (err?.message||String(err));
     }
-    alert("3D 출력 세트 생성 실패: "+(err?.message||String(err)));
+
+    alert(
+      "최종 결과패키지 생성 실패: "+
+      (err?.message||String(err))
+    );
   }finally{
     print3dBusy=false;
   }
 }
-
 
 function serializePrint3dProject(){
   return {
@@ -7104,7 +7776,9 @@ function serializePrint3dProject(){
     detail:Number(document.getElementById("print3dDetail")?.value||220),
     qr:{
       enabled:document.getElementById("print3dQrEnabled")?.checked!==false,
-      link:String(document.getElementById("print3dQrLink")?.value||""),
+      baseUrl:String(document.getElementById("print3dQrBaseUrl")?.value||""),
+      resultId:String(document.getElementById("print3dQrResultId")?.value||""),
+      link:updatePrint3dQrFinalUrl(),
       plateSizeMm:getPrint3dNumericValue("print3dQrPlateMm",35),
       stickerSizeMm:getPrint3dNumericValue("print3dQrStickerMm",30),
       recessDepthMm:getPrint3dNumericValue("print3dQrRecessMm",0.8)
@@ -7130,12 +7804,34 @@ function restorePrint3dProject(saved){
   const qrEnabled=document.getElementById("print3dQrEnabled");
   if(qrEnabled)qrEnabled.checked=qr.enabled!==false;
 
-  setValue("print3dQrLink",qr.link||"");
+  let baseUrl=qr.baseUrl||"";
+  let resultId=qr.resultId||"";
+
+  if((!baseUrl||!resultId)&&qr.link){
+    const legacy=print3dSplitLegacyQrLink(qr.link);
+    if(legacy){
+      baseUrl=baseUrl||legacy.baseUrl;
+      resultId=resultId||legacy.resultId;
+    }
+  }
+
+  setValue(
+    "print3dQrBaseUrl",
+    baseUrl||
+    "https://a3588011-netizen.github.io/river-dem-system/results/"
+  );
+
+  setValue(
+    "print3dQrResultId",
+    resultId||""
+  );
+
   setValue("print3dQrPlateMm",qr.plateSizeMm??35);
   setValue("print3dQrStickerMm",qr.stickerSizeMm??30);
   setValue("print3dQrRecessMm",qr.recessDepthMm??0.8);
 
   syncPrint3dInterpolationUi();
+  ensurePrint3dQrResultDefaults();
 
   if(
     Array.isArray(saved.bounds)&&
@@ -7172,6 +7868,10 @@ window.exportPrint3dStl=exportPrint3dStl;
 window.exportPrint3dQrSet=exportPrint3dQrSet;
 window.updatePrint3dInfo=updatePrint3dInfo;
 window.syncPrint3dInterpolationUi=syncPrint3dInterpolationUi;
+window.bindPrint3dEditableInputs=bindPrint3dEditableInputs;
+window.updatePrint3dQrFinalUrl=updatePrint3dQrFinalUrl;
+window.normalizePrint3dQrBaseUrl=normalizePrint3dQrBaseUrl;
+window.sanitizePrint3dQrResultIdInput=sanitizePrint3dQrResultIdInput;
 
 
 function menuToggleOverlay(type){
