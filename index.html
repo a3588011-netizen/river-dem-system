@@ -203,7 +203,10 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div>최저 고도</div><div id="minZ">-</div>
       <div>평균 고도</div><div id="avgZ">-</div>
       <div>DEM 파일</div><div id="demName">-</div>
+      <div>DEM CRS</div><div id="demCrsInfo">-</div>
       <div>해상도</div><div id="demRes">-</div>
+      <div>NoData</div><div id="demNoDataInfo">-</div>
+      <div>값 필터</div><div id="demValueFilterInfo">-</div>
       <div>DEM 크기</div><div id="demSize">-</div>
       <div>픽셀 수</div><div id="demPixels">-</div>
       <div>처리 모드</div><div id="demProcessMode">-</div>
@@ -311,7 +314,16 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
 <script src="./river_catalog.js"></script>
 <script>
-proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
+proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5180","+proj=tmerc +lat_0=38 +lon_0=125 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5181","+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5182","+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=550000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5183","+proj=tmerc +lat_0=38 +lon_0=129 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5184","+proj=tmerc +lat_0=38 +lon_0=131 +k=1 +x_0=200000 +y_0=500000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5185","+proj=tmerc +lat_0=38 +lon_0=125 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5186","+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5187","+proj=tmerc +lat_0=38 +lon_0=129 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
+proj4.defs("EPSG:5188","+proj=tmerc +lat_0=38 +lon_0=131 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs");
 
 const REGIONS={
 "서울/수도권":[["한강 / 여의도",37.526,126.934,13],["한강 / 잠실",37.520,127.103,13],["중랑천",37.575,127.073,13],["탄천",37.489,127.103,13],["안양천",37.520,126.883,13],["아라천",37.593,126.779,13],["임진강",37.888,126.741,12],["경안천",37.398,127.255,13]],
@@ -330,6 +342,12 @@ let map, baseLayer, marker, blankLayer;
 let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
 let heatOverlay=null, heatObjectUrl=null, selectedRiver=null, lastLatLng=null;
 let lastDemSample=null, demNoData=null;
+let demCrs=null;
+let demCrsCode=null;
+let demCrsSource="-";
+let demGeoKeys=null;
+const DEM_EXTREME_LIMIT=1e20;
+const DEM_COMMON_NODATA_VALUES=[-9999,-99999,-32768,32767,-2147483648,2147483647];
 
 const DEM_LARGE_THRESHOLD=25000000;
 const DEM_HUGE_THRESHOLD=100000000;
@@ -795,6 +813,147 @@ window.applySelectedRiver=applySelectedRiver;
 window.setVWorldKey=setVWorldKey;
 window.toggleLeft=toggleLeft;
 window.toggleRight=toggleRight;
+function safeGeoKeys(image){
+  try{
+    if(typeof image.getGeoKeys==="function"){
+      const v=image.getGeoKeys();
+      if(v&&typeof v==="object")return v;
+    }
+  }catch(e){}
+  try{
+    if(image.geoKeys&&typeof image.geoKeys==="object")return image.geoKeys;
+  }catch(e){}
+  return {};
+}
+
+function citationToKnownCrs(citation){
+  const s=String(citation||"").toLowerCase();
+
+  const epsgMatch=s.match(/epsg[^0-9]*([0-9]{4,6})/i);
+  if(epsgMatch)return "EPSG:"+epsgMatch[1];
+
+  if(s.includes("kgd2002")&&s.includes("unified"))return "EPSG:5179";
+  if(s.includes("west belt 2010"))return "EPSG:5185";
+  if(s.includes("central belt 2010"))return "EPSG:5186";
+  if(s.includes("east sea belt 2010"))return "EPSG:5188";
+  if(s.includes("east belt 2010"))return "EPSG:5187";
+  if(s.includes("central belt jeju"))return "EPSG:5182";
+  if(s.includes("west belt"))return "EPSG:5180";
+  if(s.includes("central belt"))return "EPSG:5181";
+  if(s.includes("east sea belt"))return "EPSG:5184";
+  if(s.includes("east belt"))return "EPSG:5183";
+
+  if(s.includes("wgs 84")&&s.includes("utm zone 52n"))return "EPSG:32652";
+  if(s.includes("wgs 84")&&s.includes("utm zone 51n"))return "EPSG:32651";
+  if(s.includes("wgs 84")||s.includes("wgs84"))return "EPSG:4326";
+
+  return null;
+}
+
+function detectDemCrs(image){
+  const keys=safeGeoKeys(image);
+  demGeoKeys=keys;
+
+  const projected=Number(keys.ProjectedCSTypeGeoKey);
+  if(Number.isFinite(projected)&&projected>0&&projected!==32767){
+    return {crs:"EPSG:"+projected,code:projected,source:"ProjectedCSTypeGeoKey"};
+  }
+
+  const geographic=Number(keys.GeographicTypeGeoKey);
+  if(Number.isFinite(geographic)&&geographic>0&&geographic!==32767){
+    return {crs:"EPSG:"+geographic,code:geographic,source:"GeographicTypeGeoKey"};
+  }
+
+  const citation=[
+    keys.PCSCitationGeoKey,
+    keys.GTCitationGeoKey,
+    keys.GeogCitationGeoKey
+  ].filter(Boolean).join(" ");
+
+  const fromCitation=citationToKnownCrs(citation);
+  if(fromCitation){
+    return {
+      crs:fromCitation,
+      code:Number(fromCitation.split(":")[1]),
+      source:"GeoTIFF citation"
+    };
+  }
+
+  return {crs:null,code:null,source:"미확인"};
+}
+
+function isProj4Supported(crs){
+  if(!crs)return false;
+  try{
+    return !!proj4.defs(crs);
+  }catch(e){
+    return false;
+  }
+}
+
+function isGeographicDemCrs(){
+  return demCrs==="EPSG:4326" || demCrs==="EPSG:4269" || demCrs==="EPSG:4737";
+}
+
+function formatDemResolution(){
+  if(!Number.isFinite(Math.abs(pixelX)))return "-";
+  if(isGeographicDemCrs()){
+    return `${Math.abs(pixelX).toFixed(7)}° × ${Math.abs(pixelY).toFixed(7)}°`;
+  }
+  return `${Math.abs(pixelX).toFixed(2)} m × ${Math.abs(pixelY).toFixed(2)} m`;
+}
+
+function isCommonNoDataValue(v){
+  if(!Number.isFinite(v))return true;
+  if(Math.abs(v)>=DEM_EXTREME_LIMIT)return true;
+  for(const sentinel of DEM_COMMON_NODATA_VALUES){
+    if(v===sentinel)return true;
+  }
+  return false;
+}
+
+function readDemNoData(image){
+  try{
+    if(typeof image.getGDALNoData==="function"){
+      const raw=image.getGDALNoData();
+      if(raw===null||raw===undefined||raw==="")return null;
+      const n=Number(raw);
+      return Number.isFinite(n)?n:null;
+    }
+  }catch(e){}
+  return null;
+}
+
+function updateDemMetadataUi(){
+  if(window.demCrsInfo){
+    demCrsInfo.innerText=demCrs
+      ? `${demCrs}${demCrsSource&&demCrsSource!=="-"?` · ${demCrsSource}`:""}`
+      : "미확인";
+  }
+
+  if(window.demNoDataInfo){
+    demNoDataInfo.innerText=demNoData===null
+      ? "메타데이터 없음 · 공통 NoData 자동 제외"
+      : `${demNoData}`;
+  }
+
+  if(window.demValueFilterInfo){
+    demValueFilterInfo.innerText="NaN/∞ · 공통 NoData · 극단값 자동 제외";
+  }
+}
+
+function nativeToWgs84(x,y){
+  if(!demCrs)throw new Error("DEM CRS를 확인할 수 없습니다.");
+  if(demCrs==="EPSG:4326")return [x,y];
+  return proj4(demCrs,"EPSG:4326",[x,y]);
+}
+
+function wgs84ToNative(lon,lat){
+  if(!demCrs)throw new Error("DEM CRS를 확인할 수 없습니다.");
+  if(demCrs==="EPSG:4326")return [lon,lat];
+  return proj4("EPSG:4326",demCrs,[lon,lat]);
+}
+
 async function openGeoTiffFile(file){
   if(typeof GeoTIFF.fromBlob==="function"){
     return await GeoTIFF.fromBlob(file);
@@ -892,8 +1051,23 @@ demFile.addEventListener("change",async e=>{
     demPixelCount=width*height;
     demProcessingMode=getDemModeByPixels(demPixelCount);
 
+    const crsInfo=detectDemCrs(demImage);
+    demCrs=crsInfo.crs;
+    demCrsCode=crsInfo.code;
+    demCrsSource=crsInfo.source;
+
+    if(!demCrs){
+      throw new Error("GeoTIFF CRS를 자동 판별하지 못했습니다. EPSG 정보가 포함된 GeoTIFF로 변환해주세요.");
+    }
+
+    if(!isProj4Supported(demCrs)){
+      throw new Error(`${demCrs} 좌표계는 현재 RiverDEM 자동 변환 목록에 없습니다.`);
+    }
+
     const tie=demImage.getTiePoints()[0];
-    const s=demImage.getFileDirectory().ModelPixelScale;
+    const fd=demImage.getFileDirectory();
+    const s=fd.ModelPixelScale || (typeof fd.getValue==="function"?fd.getValue("ModelPixelScale"):null);
+
     if(!tie||!s)throw new Error("GeoTIFF 위치/해상도 정보를 읽지 못했습니다.");
 
     originX=tie.x;
@@ -906,14 +1080,10 @@ demFile.addEventListener("change",async e=>{
     minY=Math.min(originY,originY+pixelY*height);
     maxY=Math.max(originY,originY+pixelY*height);
 
-    if(typeof demImage.getGDALNoData==="function"){
-      const nd=Number(demImage.getGDALNoData());
-      demNoData=Number.isFinite(nd)?nd:null;
-    }else{
-      demNoData=null;
-    }
+    demNoData=readDemNoData(demImage);
 
-    demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+    demRes.innerText=formatDemResolution();
+    updateDemMetadataUi();
     updateDemProcessingUi();
 
     let stats=null;
@@ -961,7 +1131,8 @@ demFile.addEventListener("change",async e=>{
       `크기: ${width.toLocaleString()} x ${height.toLocaleString()}\n`+
       `픽셀: ${demPixelCount.toLocaleString()}\n`+
       `처리: ${modeLabel}\n`+
-      `NoData: ${demNoData===null?"미지정":demNoData}`;
+      `CRS: ${demCrs}\n`+
+      `NoData: ${demNoData===null?"메타데이터 없음 / 자동 필터":demNoData}`;
   }catch(err){
     resetDemMemory();
     log.innerText="DEM 로드 실패: "+err.message;
@@ -970,6 +1141,7 @@ demFile.addEventListener("change",async e=>{
 function isValidDemValue(v){
   if(!Number.isFinite(v))return false;
   if(demNoData!==null && v===demNoData)return false;
+  if(isCommonNoDataValue(v))return false;
   return true;
 }
 
@@ -996,7 +1168,7 @@ function stats3(r,c){
 }
 
 function demPositionFromLatLon(lat,lon){
-  const p=proj4("EPSG:4326","EPSG:5179",[lon,lat]);
+  const p=wgs84ToNative(lon,lat);
   const x=p[0],y=p[1];
 
   if(x<minX||x>=maxX||y<minY||y>=maxY)return null;
@@ -1119,6 +1291,7 @@ async function samplePoint(lat,lon){
       `col: ${d.c}\n`+
       `DEM: ${d.z.toFixed(3)} m\n`+
       `3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m\n`+
+      `DEM CRS: ${demCrs}\n`+
       `읽기: ${demProcessingMode==="normal"?"메모리 Raster":"원본 Window 3×3"}`;
   }catch(err){
     if(token!==demSampleToken)return;
@@ -1164,6 +1337,10 @@ function resetDemMemory(){
   pixelX=0;pixelY=0;
   minX=0;maxX=0;minY=0;maxY=0;
   demNoData=null;
+  demCrs=null;
+  demCrsCode=null;
+  demCrsSource="-";
+  demGeoKeys=null;
   lastDemSample=null;
 
   curCoord.innerText="-";
@@ -1174,6 +1351,9 @@ function resetDemMemory(){
   avgZ.innerText="-";
   demName.innerText="-";
   demRes.innerText="-";
+  if(window.demCrsInfo)demCrsInfo.innerText="-";
+  if(window.demNoDataInfo)demNoDataInfo.innerText="-";
+  if(window.demValueFilterInfo)demValueFilterInfo.innerText="-";
 
   if(window.demSize)demSize.innerText="-";
   if(window.demPixels)demPixels.innerText="-";
@@ -1250,7 +1430,7 @@ async function drawHeatmap(){
   ctx.putImageData(image,0,0);
 
   function to4326(x,y){
-    const p=proj4("EPSG:5179","EPSG:4326",[x,y]);
+    const p=nativeToWgs84(x,y);
     return[p[1],p[0]];
   }
 
@@ -1523,6 +1703,7 @@ function addValidationPoint(){
       error:null,
       absError:null,
       resolution:getCurrentDemResolution(),
+      crs:demCrs,
       note:(vEl("validationNote").value||"").trim(),
       createdAt:new Date().toISOString()
     };
@@ -1564,6 +1745,7 @@ function addValidationPoint(){
     error,
     absError:Math.abs(error),
     resolution:getCurrentDemResolution(),
+    crs:demCrs,
     note:(vEl("validationNote").value||"").trim(),
     createdAt:new Date().toISOString()
   };
@@ -1679,7 +1861,7 @@ function exportValidationCsv(){
 
   const headers=[
     "검증단계","하천","DEM파일","DEM해상도_m","기준","구분","판정포함","샘플방식",
-    "위도","경도","EPSG5179_X","EPSG5179_Y","row","col",
+    "위도","경도","DEM_CRS","DEM_X","DEM_Y","row","col",
     "실측고도_m","DEM고도_m","오차_DEM-실측_m","절대오차_m","메모","기록시각"
   ];
 
@@ -1705,6 +1887,7 @@ function exportValidationCsv(){
       r.sampleMode==="avg3"?"3x3 평균":"단일 셀",
       Number(r.lat).toFixed(8),
       Number(r.lon).toFixed(8),
+      r.crs||"",
       Number(r.x).toFixed(3),
       Number(r.y).toFixed(3),
       r.row,
