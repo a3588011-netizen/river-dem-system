@@ -204,6 +204,11 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div>평균 고도</div><div id="avgZ">-</div>
       <div>DEM 파일</div><div id="demName">-</div>
       <div>해상도</div><div id="demRes">-</div>
+      <div>DEM 크기</div><div id="demSize">-</div>
+      <div>픽셀 수</div><div id="demPixels">-</div>
+      <div>처리 모드</div><div id="demProcessMode">-</div>
+      <div>읽기 방식</div><div id="demReadMode">-</div>
+      <div>통계 방식</div><div id="demStatsMode">-</div>
     </div>
 
     <hr>
@@ -325,6 +330,21 @@ let map, baseLayer, marker, blankLayer;
 let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
 let heatOverlay=null, heatObjectUrl=null, selectedRiver=null, lastLatLng=null;
 let lastDemSample=null, demNoData=null;
+
+const DEM_LARGE_THRESHOLD=25000000;
+const DEM_HUGE_THRESHOLD=100000000;
+const DEM_PREVIEW_MAX=1200;
+
+let demTiff=null;
+let demImage=null;
+let demFileRef=null;
+let demPixelCount=0;
+let demProcessingMode="none";
+let demPreviewRaster=null;
+let demPreviewWidth=0;
+let demPreviewHeight=0;
+let demWindowCache=new Map();
+let demSampleToken=0;
 let validationRecords=[];
 let validationLayer=null;
 let heatRenderToken=0;
@@ -347,7 +367,7 @@ function initMap(){
 
   map.on("mousemove",e=>updateStatus(e.latlng));
   map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
-  map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
+  map.on("click",e=>{samplePoint(e.latlng.lat,e.latlng.lng).catch(err=>{log.innerText="DEM 샘플링 오류: "+err.message;});});
   validationLayer=L.layerGroup().addTo(map);
   loadValidationRecords();
   loadFavoriteRivers();
@@ -775,28 +795,105 @@ window.applySelectedRiver=applySelectedRiver;
 window.setVWorldKey=setVWorldKey;
 window.toggleLeft=toggleLeft;
 window.toggleRight=toggleRight;
+async function openGeoTiffFile(file){
+  if(typeof GeoTIFF.fromBlob==="function"){
+    return await GeoTIFF.fromBlob(file);
+  }
+  return await GeoTIFF.fromArrayBuffer(await file.arrayBuffer());
+}
+
+function getDemModeByPixels(pixels){
+  if(pixels>=DEM_HUGE_THRESHOLD)return "forced-window";
+  if(pixels>=DEM_LARGE_THRESHOLD)return "window";
+  return "normal";
+}
+
+function formatPixelCount(n){
+  if(!Number.isFinite(n))return "-";
+  return n.toLocaleString()+" px";
+}
+
+function updateDemProcessingUi(){
+  const modeText={
+    "normal":"일반 DEM",
+    "window":"대형 DEM",
+    "forced-window":"초대형 DEM"
+  }[demProcessingMode]||"-";
+
+  const readText={
+    "normal":"전체 Raster",
+    "window":"Window 부분 읽기",
+    "forced-window":"Window 부분 읽기 강제"
+  }[demProcessingMode]||"-";
+
+  if(window.demSize)demSize.innerText=width&&height?`${width.toLocaleString()} × ${height.toLocaleString()}`:"-";
+  if(window.demPixels)demPixels.innerText=demPixelCount?formatPixelCount(demPixelCount):"-";
+  if(window.demProcessMode)demProcessMode.innerText=modeText;
+  if(window.demReadMode)demReadMode.innerText=readText;
+}
+
+function previewDimensions(w,h,maxSide=DEM_PREVIEW_MAX){
+  const scale=Math.min(1,maxSide/Math.max(w,h));
+  return {
+    width:Math.max(1,Math.round(w*scale)),
+    height:Math.max(1,Math.round(h*scale)),
+    scale
+  };
+}
+
+function computeRasterStats(arr){
+  let mn=Infinity,mx=-Infinity,sum=0,count=0;
+  for(let i=0;i<arr.length;i++){
+    const n=Number(arr[i]);
+    if(!isValidDemValue(n))continue;
+    if(n<mn)mn=n;
+    if(n>mx)mx=n;
+    sum+=n;
+    count++;
+  }
+  if(!count)return null;
+  return {min:mn,max:mx,avg:sum/count,count};
+}
+
+async function createLargeDemPreview(){
+  if(!demImage)throw new Error("DEM 이미지가 준비되지 않았습니다.");
+
+  const d=previewDimensions(width,height);
+  demPreviewWidth=d.width;
+  demPreviewHeight=d.height;
+
+  const result=await demImage.readRasters({
+    samples:[0],
+    width:demPreviewWidth,
+    height:demPreviewHeight,
+    resampleMethod:"bilinear"
+  });
+
+  demPreviewRaster=result[0];
+  return computeRasterStats(demPreviewRaster);
+}
+
 demFile.addEventListener("change",async e=>{
-  const f=e.target.files[0]; if(!f)return;
+  const f=e.target.files[0];
+  if(!f)return;
 
   resetDemMemory();
-  log.innerText="DEM 로드 중...";
+  demFileRef=f;
+  log.innerText="DEM 메타데이터 읽는 중...";
   demName.innerText=f.name;
   updateValidationTarget();
 
   try{
-    const t=await GeoTIFF.fromArrayBuffer(await f.arrayBuffer());
-    const img=await t.getImage();
-    width=img.getWidth();
-    height=img.getHeight();
+    demTiff=await openGeoTiffFile(f);
+    demImage=await demTiff.getImage();
 
-    if(!warnLargeDem(width,height)){
-      log.innerText="DEM 로드 취소됨";
-      resetDemMemory();
-      return;
-    }
+    width=demImage.getWidth();
+    height=demImage.getHeight();
+    demPixelCount=width*height;
+    demProcessingMode=getDemModeByPixels(demPixelCount);
 
-    const tie=img.getTiePoints()[0];
-    const s=img.getFileDirectory().ModelPixelScale;
+    const tie=demImage.getTiePoints()[0];
+    const s=demImage.getFileDirectory().ModelPixelScale;
     if(!tie||!s)throw new Error("GeoTIFF 위치/해상도 정보를 읽지 못했습니다.");
 
     originX=tie.x;
@@ -809,44 +906,62 @@ demFile.addEventListener("change",async e=>{
     minY=Math.min(originY,originY+pixelY*height);
     maxY=Math.max(originY,originY+pixelY*height);
 
-    if(typeof img.getGDALNoData==="function"){
-      const nd=Number(img.getGDALNoData());
+    if(typeof demImage.getGDALNoData==="function"){
+      const nd=Number(demImage.getGDALNoData());
       demNoData=Number.isFinite(nd)?nd:null;
     }else{
       demNoData=null;
     }
 
-    raster=(await img.readRasters({samples:[0]}))[0];
+    demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+    updateDemProcessingUi();
 
-    let mn=Infinity,mx=-Infinity,sum=0,count=0;
-    for(let i=0;i<raster.length;i++){
-      const n=Number(raster[i]);
-      if(!isValidDemValue(n))continue;
-      if(n<mn)mn=n;
-      if(n>mx)mx=n;
-      sum+=n;
-      count++;
+    let stats=null;
+
+    if(demProcessingMode==="normal"){
+      log.innerText=`DEM 전체 Raster 로드 중...\n픽셀: ${demPixelCount.toLocaleString()}`;
+      raster=(await demImage.readRasters({samples:[0]}))[0];
+      stats=computeRasterStats(raster);
+      demStatsMode.innerText="정밀 (전체 Raster)";
+    }else{
+      raster=null;
+      log.innerText=
+        `${demProcessingMode==="forced-window"?"초대형":"대형"} DEM 감지\n`+
+        `픽셀: ${demPixelCount.toLocaleString()}\n`+
+        `전체 Raster 로딩을 생략하고 화면용 미리보기를 생성합니다.`;
+
+      stats=await createLargeDemPreview();
+      demStatsMode.innerText=`근사 (미리보기 ${demPreviewWidth} × ${demPreviewHeight})`;
     }
 
-    if(!count)throw new Error("유효한 DEM 고도값이 없습니다.");
+    if(!stats)throw new Error("유효한 DEM 고도값이 없습니다.");
 
-    const av=sum/count;
-    minZ.innerText=mn.toFixed(1)+" m";
-    maxZ.innerText=mx.toFixed(1)+" m";
-    avgZ.innerText=av.toFixed(1)+" m";
-    demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+    const prefix=demProcessingMode==="normal"?"":"≈ ";
+    minZ.innerText=prefix+stats.min.toFixed(1)+" m";
+    maxZ.innerText=prefix+stats.max.toFixed(1)+" m";
+    avgZ.innerText=prefix+stats.avg.toFixed(1)+" m";
+
     updateValidationModeUi();
+    await drawHeatmap();
 
-    drawHeatmap();
     updateValidationTarget();
     updateValidationStats();
     renderValidationList();
     renderValidationMarkers();
 
-    log.innerText=`DEM 로드 완료
-파일: ${f.name}
-크기: ${width} x ${height}
-NoData: ${demNoData===null?"미지정":demNoData}`;
+    const modeLabel={
+      "normal":"일반 DEM / 전체 Raster",
+      "window":"대형 DEM / Window 부분 읽기",
+      "forced-window":"초대형 DEM / Window 부분 읽기 강제"
+    }[demProcessingMode];
+
+    log.innerText=
+      `DEM 로드 완료\n`+
+      `파일: ${f.name}\n`+
+      `크기: ${width.toLocaleString()} x ${height.toLocaleString()}\n`+
+      `픽셀: ${demPixelCount.toLocaleString()}\n`+
+      `처리: ${modeLabel}\n`+
+      `NoData: ${demNoData===null?"미지정":demNoData}`;
   }catch(err){
     resetDemMemory();
     log.innerText="DEM 로드 실패: "+err.message;
@@ -857,49 +972,160 @@ function isValidDemValue(v){
   if(demNoData!==null && v===demNoData)return false;
   return true;
 }
-function valueAt(r,c){if(!raster||r<0||c<0||r>=height||c>=width)return null;const v=Number(raster[r*width+c]);return isValidDemValue(v)?v:null}
-function stats3(r,c){let a=[];for(let y=r-1;y<=r+1;y++)for(let x=c-1;x<=c+1;x++){const v=valueAt(y,x);if(v!==null)a.push(v)}if(!a.length)return null;return{avg:a.reduce((p,q)=>p+q,0)/a.length,min:Math.min(...a),max:Math.max(...a)}}
-function readDem(lat,lon){
-  const p=proj4("EPSG:4326","EPSG:5179",[lon,lat]);const x=p[0],y=p[1];
-  if(x<minX||x>=maxX||y<minY||y>=maxY)return null;
-  const r=Math.floor((originY-y)/Math.abs(pixelY));const c=Math.floor((x-originX)/pixelX);
-  return {z:valueAt(r,c),r,c,x,y,st:stats3(r,c)};
+
+function valueAt(r,c){
+  if(!raster||r<0||c<0||r>=height||c>=width)return null;
+  const v=Number(raster[r*width+c]);
+  return isValidDemValue(v)?v:null;
 }
-function samplePoint(lat,lon){
+
+function stats3(r,c){
+  let sum=0,count=0,mn=Infinity,mx=-Infinity;
+  for(let y=r-1;y<=r+1;y++){
+    for(let x=c-1;x<=c+1;x++){
+      const v=valueAt(y,x);
+      if(v===null)continue;
+      sum+=v;
+      count++;
+      if(v<mn)mn=v;
+      if(v>mx)mx=v;
+    }
+  }
+  if(!count)return null;
+  return {avg:sum/count,min:mn,max:mx};
+}
+
+function demPositionFromLatLon(lat,lon){
+  const p=proj4("EPSG:4326","EPSG:5179",[lon,lat]);
+  const x=p[0],y=p[1];
+
+  if(x<minX||x>=maxX||y<minY||y>=maxY)return null;
+
+  const r=Math.floor((originY-y)/Math.abs(pixelY));
+  const c=Math.floor((x-originX)/pixelX);
+
+  if(r<0||c<0||r>=height||c>=width)return null;
+  return {r,c,x,y};
+}
+
+function cacheDemWindow(key,value){
+  demWindowCache.set(key,value);
+  if(demWindowCache.size>256){
+    const first=demWindowCache.keys().next().value;
+    demWindowCache.delete(first);
+  }
+}
+
+async function readDemWindow(r,c){
+  const key=`${r}:${c}`;
+  if(demWindowCache.has(key))return demWindowCache.get(key);
+  if(!demImage)return null;
+
+  const x1=Math.max(0,c-1);
+  const y1=Math.max(0,r-1);
+  const x2=Math.min(width,c+2);
+  const y2=Math.min(height,r+2);
+
+  const result=await demImage.readRasters({
+    samples:[0],
+    window:[x1,y1,x2,y2]
+  });
+
+  const band=result[0];
+  const winW=x2-x1;
+  const centerIndex=(r-y1)*winW+(c-x1);
+  const centerRaw=Number(band[centerIndex]);
+  const z=isValidDemValue(centerRaw)?centerRaw:null;
+
+  let sum=0,count=0,mn=Infinity,mx=-Infinity;
+  for(let i=0;i<band.length;i++){
+    const v=Number(band[i]);
+    if(!isValidDemValue(v))continue;
+    sum+=v;
+    count++;
+    if(v<mn)mn=v;
+    if(v>mx)mx=v;
+  }
+
+  const st=count?{avg:sum/count,min:mn,max:mx}:null;
+  const value={z,st};
+  cacheDemWindow(key,value);
+  return value;
+}
+
+async function readDem(lat,lon){
+  const pos=demPositionFromLatLon(lat,lon);
+  if(!pos)return null;
+
+  if(demProcessingMode==="normal"){
+    return {
+      z:valueAt(pos.r,pos.c),
+      r:pos.r,c:pos.c,x:pos.x,y:pos.y,
+      st:stats3(pos.r,pos.c)
+    };
+  }
+
+  const w=await readDemWindow(pos.r,pos.c);
+  return {
+    z:w?w.z:null,
+    r:pos.r,c:pos.c,x:pos.x,y:pos.y,
+    st:w?w.st:null
+  };
+}
+
+async function samplePoint(lat,lon){
+  const token=++demSampleToken;
+
   curCoord.innerText=lon.toFixed(5)+", "+lat.toFixed(5);
   if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
   updateStatus(L.latLng(lat,lon));
-
   lastDemSample=null;
 
-  if(!raster){
+  if(!demImage){
     curZ.innerText="-";
     avg3Z.innerText="-";
     return;
   }
 
-  const d=readDem(lat,lon);
-  if(!d||d.z===null){
-    curZ.innerText="범위 밖";
-    avg3Z.innerText="-";
-    return;
+  if(demProcessingMode!=="normal"){
+    curZ.innerText="읽는 중...";
+    avg3Z.innerText="읽는 중...";
   }
 
-  lastDemSample={
-    lat:lat,lon:lon,x:d.x,y:d.y,
-    row:d.r,col:d.c,z:d.z,
-    avg3:d.st?d.st.avg:null
-  };
+  try{
+    const d=await readDem(lat,lon);
+    if(token!==demSampleToken)return;
 
-  curZ.innerText=d.z.toFixed(2)+" m";
-  avg3Z.innerText=d.st?d.st.avg.toFixed(2)+" m":"-";
-  log.innerText=`좌표 샘플
-위도: ${lat.toFixed(7)}
-경도: ${lon.toFixed(7)}
-row: ${d.r}
-col: ${d.c}
-DEM: ${d.z.toFixed(3)} m
-3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m`;
+    if(!d||d.z===null){
+      curZ.innerText="범위 밖";
+      avg3Z.innerText="-";
+      return;
+    }
+
+    lastDemSample={
+      lat:lat,lon:lon,x:d.x,y:d.y,
+      row:d.r,col:d.c,z:d.z,
+      avg3:d.st?d.st.avg:null
+    };
+
+    curZ.innerText=d.z.toFixed(2)+" m";
+    avg3Z.innerText=d.st?d.st.avg.toFixed(2)+" m":"-";
+
+    log.innerText=
+      `좌표 샘플\n`+
+      `위도: ${lat.toFixed(7)}\n`+
+      `경도: ${lon.toFixed(7)}\n`+
+      `row: ${d.r}\n`+
+      `col: ${d.c}\n`+
+      `DEM: ${d.z.toFixed(3)} m\n`+
+      `3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m\n`+
+      `읽기: ${demProcessingMode==="normal"?"메모리 Raster":"원본 Window 3×3"}`;
+  }catch(err){
+    if(token!==demSampleToken)return;
+    curZ.innerText="읽기 실패";
+    avg3Z.innerText="-";
+    log.innerText="DEM 지점 읽기 실패: "+err.message;
+  }
 }
 function color(v,alpha){
   if(v<5)return[0,0,255,alpha]; if(v<20)return[0,200,255,alpha]; if(v<50)return[0,255,0,alpha]; if(v<100)return[255,255,0,alpha]; return[255,0,0,alpha];
@@ -916,15 +1142,30 @@ function clearHeatOverlay(){
     heatObjectUrl=null;
   }
 }
+
 function resetDemMemory(){
   clearHeatOverlay();
+  demSampleToken++;
+
   raster=null;
+  demPreviewRaster=null;
+  demPreviewWidth=0;
+  demPreviewHeight=0;
+  demWindowCache.clear();
+
+  demImage=null;
+  demTiff=null;
+  demFileRef=null;
+  demPixelCount=0;
+  demProcessingMode="none";
+
   width=0;height=0;
   originX=0;originY=0;
   pixelX=0;pixelY=0;
   minX=0;maxX=0;minY=0;maxY=0;
   demNoData=null;
   lastDemSample=null;
+
   curCoord.innerText="-";
   curZ.innerText="-";
   avg3Z.innerText="-";
@@ -933,60 +1174,80 @@ function resetDemMemory(){
   avgZ.innerText="-";
   demName.innerText="-";
   demRes.innerText="-";
+
+  if(window.demSize)demSize.innerText="-";
+  if(window.demPixels)demPixels.innerText="-";
+  if(window.demProcessMode)demProcessMode.innerText="-";
+  if(window.demReadMode)demReadMode.innerText="-";
+  if(window.demStatsMode)demStatsMode.innerText="-";
+
   updateValidationTarget();
   updateValidationStats();
   renderValidationList();
   renderValidationMarkers();
 }
-function warnLargeDem(w,h){
-  const pixels=w*h;
-  if(pixels>25000000){
-    return confirm(
-      "DEM 크기가 큽니다.\n\n"+
-      "픽셀 수: "+pixels.toLocaleString()+"\n"+
-      "대용량 DEM은 로딩에 시간이 걸릴 수 있습니다.\n\n"+
-      "계속 진행할까요?"
-    );
-  }
-  return true;
-}
 
-function drawHeatmap(){
-  if(!raster)return;
+async function drawHeatmap(){
+  if(!demImage)return;
+
   clearHeatOverlay();
   const renderToken=heatRenderToken;
 
-  const maxCanvas=1200;
-  const scale=Math.min(1,maxCanvas/Math.max(width,height));
-  const cw=Math.max(1,Math.round(width*scale));
-  const ch=Math.max(1,Math.round(height*scale));
-  const canvas=document.createElement("canvas");
-  canvas.width=cw;
-  canvas.height=ch;
+  let srcRaster=null;
+  let srcWidth=0;
+  let srcHeight=0;
 
-  const ctx=canvas.getContext("2d");
-  const img=ctx.createImageData(cw,ch);
-  const alpha=Math.round(Number(heatOpacity.value)/100*255);
+  if(demProcessingMode==="normal"){
+    if(!raster)return;
 
-  for(let y=0;y<ch;y++){
-    const srcY=Math.min(height-1,Math.floor(y/scale));
-    for(let x=0;x<cw;x++){
-      const srcX=Math.min(width-1,Math.floor(x/scale));
-      const v=Number(raster[srcY*width+srcX]);
-      const p=(y*cw+x)*4;
-      if(!isValidDemValue(v)){
-        img.data[p+3]=0;
-        continue;
+    const d=previewDimensions(width,height);
+    srcWidth=d.width;
+    srcHeight=d.height;
+
+    const preview=new Float32Array(srcWidth*srcHeight);
+    for(let y=0;y<srcHeight;y++){
+      const sy=Math.min(height-1,Math.floor(y/d.scale));
+      for(let x=0;x<srcWidth;x++){
+        const sx=Math.min(width-1,Math.floor(x/d.scale));
+        preview[y*srcWidth+x]=raster[sy*width+sx];
       }
-      const c=color(v,alpha);
-      img.data[p]=c[0];
-      img.data[p+1]=c[1];
-      img.data[p+2]=c[2];
-      img.data[p+3]=c[3];
     }
+    srcRaster=preview;
+  }else{
+    if(!demPreviewRaster){
+      await createLargeDemPreview();
+    }
+    if(renderToken!==heatRenderToken)return;
+    srcRaster=demPreviewRaster;
+    srcWidth=demPreviewWidth;
+    srcHeight=demPreviewHeight;
   }
 
-  ctx.putImageData(img,0,0);
+  const canvas=document.createElement("canvas");
+  canvas.width=srcWidth;
+  canvas.height=srcHeight;
+
+  const ctx=canvas.getContext("2d");
+  const image=ctx.createImageData(srcWidth,srcHeight);
+  const alpha=Math.round(Number(heatOpacity.value)/100*255);
+
+  for(let i=0;i<srcRaster.length;i++){
+    const v=Number(srcRaster[i]);
+    const p=i*4;
+
+    if(!isValidDemValue(v)){
+      image.data[p+3]=0;
+      continue;
+    }
+
+    const c=color(v,alpha);
+    image.data[p]=c[0];
+    image.data[p+1]=c[1];
+    image.data[p+2]=c[2];
+    image.data[p+3]=c[3];
+  }
+
+  ctx.putImageData(image,0,0);
 
   function to4326(x,y){
     const p=proj4("EPSG:5179","EPSG:4326",[x,y]);
@@ -997,19 +1258,28 @@ function drawHeatmap(){
   const se=to4326(maxX,minY);
   const bounds=[[se[0],nw[1]],[nw[0],se[1]]];
 
-  canvas.toBlob(blob=>{
-    if(renderToken!==heatRenderToken)return;
-    if(!blob){
-      log.innerText+="\nHeatmap 생성 실패: Blob 생성 실패";
-      return;
-    }
-    heatObjectUrl=URL.createObjectURL(blob);
-    heatOverlay=L.imageOverlay(heatObjectUrl,bounds,{opacity:Number(heatOpacity.value)/100}).addTo(map);
-    map.fitBounds(bounds);
-    setOverlayOpacity();
-    log.innerText+=`
-Heatmap 렌더링: ${cw} x ${ch}${scale<1?" (축소)":""}`;
-  },"image/png");
+  await new Promise((resolve,reject)=>{
+    canvas.toBlob(blob=>{
+      if(renderToken!==heatRenderToken){resolve();return}
+      if(!blob){reject(new Error("Blob 생성 실패"));return}
+
+      heatObjectUrl=URL.createObjectURL(blob);
+      heatOverlay=L.imageOverlay(
+        heatObjectUrl,
+        bounds,
+        {opacity:Number(heatOpacity.value)/100}
+      ).addTo(map);
+
+      map.fitBounds(bounds);
+      setOverlayOpacity();
+
+      log.innerText+=
+        `\nHeatmap: ${srcWidth} x ${srcHeight}`+
+        (demProcessingMode==="normal"?"":" (대형 DEM 미리보기)");
+
+      resolve();
+    },"image/png");
+  });
 }
 function setOverlayOpacity(){
   demOpText.innerText=demOpacity.value+"%"; heatOpText.innerText=heatOpacity.value+"%";
