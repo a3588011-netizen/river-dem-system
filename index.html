@@ -201,10 +201,22 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
     <hr>
     <div class="label">DEM 정보</div>
+    <select id="sampleDisplayMode" onchange="updateDisplayedSampleValue()">
+      <option value="cell">단일 셀 원값</option>
+      <option value="avg3" selected>3×3 평균 (기본)</option>
+      <option value="avg5">5×5 평균</option>
+      <option value="bilinear">쌍선형 보간값</option>
+    </select>
+    <div class="row">현재 DEM 셀 경계 <span id="pixelGridSw" class="switch on" onclick="toggleSwitch(this,'pixel')"></span></div>
+    <div class="help">90m DEM처럼 격자가 큰 자료는 셀 경계를 넘을 때 값이 계단식으로 바뀔 수 있습니다.</div>
+
     <div class="infoGrid">
       <div>현재 좌표</div><div id="curCoord">-</div>
-      <div>해발 고도</div><div id="curZ">-</div>
-      <div>3x3 평균</div><div id="avg3Z">-</div>
+      <div>표시 고도</div><div id="curZ">-</div>
+      <div>단일 셀 원값</div><div id="cellZ">-</div>
+      <div>3×3 평균</div><div id="avg3Z">-</div>
+      <div>5×5 평균</div><div id="avg5Z">-</div>
+      <div>쌍선형 보간</div><div id="bilinearZ">-</div>
       <div>최고 고도</div><div id="maxZ">-</div>
       <div>최저 고도</div><div id="minZ">-</div>
       <div>평균 고도</div><div id="avgZ">-</div>
@@ -261,8 +273,10 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       </select>
 
       <select id="validationSampleMode">
-        <option value="cell">DEM 단일 셀 값 사용</option>
-        <option value="avg3">3×3 평균값 사용</option>
+        <option value="cell">DEM 단일 셀 원값 사용</option>
+        <option value="avg3" selected>3×3 평균값 사용 (권장)</option>
+        <option value="avg5">5×5 평균값 사용</option>
+        <option value="bilinear">쌍선형 보간값 사용</option>
       </select>
 
       <input id="validationReferenceZ" class="validationHidden" type="number" step="0.001" placeholder="실제 측량 고도 (m)">
@@ -344,7 +358,7 @@ const REGIONS={
 "전국 주요":[["한강",37.526,126.934,13],["낙동강",35.848,128.520,12],["금강",36.470,127.080,12],["영산강",35.017,126.744,12],["섬진강 / 화개",35.186645,127.622747,14],["북한강",37.921,127.730,12],["남한강",37.298,127.634,12],["태화강",35.544,129.320,13],["만경강",35.891,127.066,12]]
 };
 
-let map, baseLayer, marker, blankLayer;
+let map, baseLayer, marker, blankLayer, pixelBoundaryLayer=null;
 let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
 let heatOverlay=null, heatObjectUrl=null, selectedRiver=null, lastLatLng=null;
 let lastDemSample=null, demNoData=null;
@@ -1279,10 +1293,11 @@ function valueAt(r,c){
   return isValidDemValue(v)?v:null;
 }
 
-function stats3(r,c){
+function statsN(r,c,radius){
   let sum=0,count=0,mn=Infinity,mx=-Infinity;
-  for(let y=r-1;y<=r+1;y++){
-    for(let x=c-1;x<=c+1;x++){
+
+  for(let y=r-radius;y<=r+radius;y++){
+    for(let x=c-radius;x<=c+radius;x++){
       const v=valueAt(y,x);
       if(v===null)continue;
       sum+=v;
@@ -1291,8 +1306,38 @@ function stats3(r,c){
       if(v>mx)mx=v;
     }
   }
+
   if(!count)return null;
-  return {avg:sum/count,min:mn,max:mx};
+  return {avg:sum/count,min:mn,max:mx,count};
+}
+
+function bilinearFromGetter(rowFloat,colFloat,getter){
+  // GeoTIFF tie point는 픽셀 좌상단 기준으로 보고 셀 중심을 -0.5 보정
+  const gy=rowFloat-0.5;
+  const gx=colFloat-0.5;
+
+  const r0=Math.floor(gy);
+  const c0=Math.floor(gx);
+  const ty=gy-r0;
+  const tx=gx-c0;
+
+  const samples=[
+    {r:r0,   c:c0,   w:(1-tx)*(1-ty)},
+    {r:r0,   c:c0+1, w:tx*(1-ty)},
+    {r:r0+1, c:c0,   w:(1-tx)*ty},
+    {r:r0+1, c:c0+1, w:tx*ty}
+  ];
+
+  let sum=0,weight=0;
+
+  for(const s of samples){
+    const v=getter(s.r,s.c);
+    if(v===null||!Number.isFinite(v))continue;
+    sum+=v*s.w;
+    weight+=s.w;
+  }
+
+  return weight>0?sum/weight:null;
 }
 
 function demPositionFromLatLon(lat,lon){
@@ -1301,30 +1346,64 @@ function demPositionFromLatLon(lat,lon){
 
   if(x<minX||x>=maxX||y<minY||y>=maxY)return null;
 
-  const r=Math.floor((originY-y)/Math.abs(pixelY));
-  const c=Math.floor((x-originX)/pixelX);
+  const rowFloat=(originY-y)/Math.abs(pixelY);
+  const colFloat=(x-originX)/pixelX;
+  const r=Math.floor(rowFloat);
+  const c=Math.floor(colFloat);
 
   if(r<0||c<0||r>=height||c>=width)return null;
-  return {r,c,x,y};
+
+  return {r,c,x,y,rowFloat,colFloat};
 }
 
 function cacheDemWindow(key,value){
   demWindowCache.set(key,value);
+
   if(demWindowCache.size>256){
     const first=demWindowCache.keys().next().value;
     demWindowCache.delete(first);
   }
 }
 
-async function readDemWindow(r,c){
-  const key=`${r}:${c}`;
+function windowValueAt(band,x1,y1,winW,winH,r,c){
+  if(r<y1||c<x1||r>=y1+winH||c>=x1+winW)return null;
+
+  const i=(r-y1)*winW+(c-x1);
+  const v=Number(band[i]);
+
+  return isValidDemValue(v)?v:null;
+}
+
+function statsWindow(band,x1,y1,winW,winH,r,c,radius){
+  let sum=0,count=0,mn=Infinity,mx=-Infinity;
+
+  for(let yy=r-radius;yy<=r+radius;yy++){
+    for(let xx=c-radius;xx<=c+radius;xx++){
+      const v=windowValueAt(band,x1,y1,winW,winH,yy,xx);
+      if(v===null)continue;
+      sum+=v;
+      count++;
+      if(v<mn)mn=v;
+      if(v>mx)mx=v;
+    }
+  }
+
+  if(!count)return null;
+  return {avg:sum/count,min:mn,max:mx,count};
+}
+
+async function readDemWindow(pos){
+  const key=`${pos.r}:${pos.c}:${pos.rowFloat.toFixed(4)}:${pos.colFloat.toFixed(4)}`;
+
   if(demWindowCache.has(key))return demWindowCache.get(key);
   if(!demImage)return null;
 
-  const x1=Math.max(0,c-1);
-  const y1=Math.max(0,r-1);
-  const x2=Math.min(width,c+2);
-  const y2=Math.min(height,r+2);
+  // 5×5 평균 + 쌍선형 보간을 한 번의 원본 Window 읽기로 처리
+  const radius=2;
+  const x1=Math.max(0,pos.c-radius-1);
+  const y1=Math.max(0,pos.r-radius-1);
+  const x2=Math.min(width,pos.c+radius+2);
+  const y2=Math.min(height,pos.r+radius+2);
 
   const result=await demImage.readRasters({
     samples:[0],
@@ -1333,22 +1412,16 @@ async function readDemWindow(r,c){
 
   const band=result[0];
   const winW=x2-x1;
-  const centerIndex=(r-y1)*winW+(c-x1);
-  const centerRaw=Number(band[centerIndex]);
-  const z=isValidDemValue(centerRaw)?centerRaw:null;
+  const winH=y2-y1;
+  const getter=(r,c)=>windowValueAt(band,x1,y1,winW,winH,r,c);
 
-  let sum=0,count=0,mn=Infinity,mx=-Infinity;
-  for(let i=0;i<band.length;i++){
-    const v=Number(band[i]);
-    if(!isValidDemValue(v))continue;
-    sum+=v;
-    count++;
-    if(v<mn)mn=v;
-    if(v>mx)mx=v;
-  }
+  const value={
+    z:getter(pos.r,pos.c),
+    st3:statsWindow(band,x1,y1,winW,winH,pos.r,pos.c,1),
+    st5:statsWindow(band,x1,y1,winW,winH,pos.r,pos.c,2),
+    bilinear:bilinearFromGetter(pos.rowFloat,pos.colFloat,getter)
+  };
 
-  const st=count?{avg:sum/count,min:mn,max:mx}:null;
-  const value={z,st};
   cacheDemWindow(key,value);
   return value;
 }
@@ -1361,36 +1434,126 @@ async function readDem(lat,lon){
     return {
       z:valueAt(pos.r,pos.c),
       r:pos.r,c:pos.c,x:pos.x,y:pos.y,
-      st:stats3(pos.r,pos.c)
+      rowFloat:pos.rowFloat,
+      colFloat:pos.colFloat,
+      st3:statsN(pos.r,pos.c,1),
+      st5:statsN(pos.r,pos.c,2),
+      bilinear:bilinearFromGetter(pos.rowFloat,pos.colFloat,valueAt)
     };
   }
 
-  const w=await readDemWindow(pos.r,pos.c);
+  const w=await readDemWindow(pos);
+
   return {
     z:w?w.z:null,
     r:pos.r,c:pos.c,x:pos.x,y:pos.y,
-    st:w?w.st:null
+    rowFloat:pos.rowFloat,
+    colFloat:pos.colFloat,
+    st3:w?w.st3:null,
+    st5:w?w.st5:null,
+    bilinear:w?w.bilinear:null
   };
+}
+
+function getSampleValue(sample,mode){
+  if(!sample)return null;
+
+  const value={
+    cell:sample.z,
+    avg3:sample.avg3,
+    avg5:sample.avg5,
+    bilinear:sample.bilinear
+  }[mode];
+
+  return Number.isFinite(Number(value))?Number(value):null;
+}
+
+function sampleModeLabel(mode){
+  return {
+    cell:"단일 셀",
+    avg3:"3×3 평균",
+    avg5:"5×5 평균",
+    bilinear:"쌍선형 보간"
+  }[mode]||mode;
+}
+
+function updateDisplayedSampleValue(){
+  const select=document.getElementById("sampleDisplayMode");
+  const mode=select?.value||"avg3";
+  const value=getSampleValue(lastDemSample,mode);
+
+  curZ.innerText=value===null?"-":value.toFixed(2)+" m";
+}
+
+window.updateDisplayedSampleValue=updateDisplayedSampleValue;
+
+function clearPixelBoundary(){
+  if(pixelBoundaryLayer&&map){
+    map.removeLayer(pixelBoundaryLayer);
+    pixelBoundaryLayer=null;
+  }
+}
+
+function drawPixelBoundary(r,c){
+  clearPixelBoundary();
+
+  const sw=document.getElementById("pixelGridSw");
+  if(!sw||!sw.classList.contains("on")||!demImage)return;
+
+  const x0=originX+c*pixelX;
+  const x1=originX+(c+1)*pixelX;
+  const y0=originY+r*pixelY;
+  const y1=originY+(r+1)*pixelY;
+
+  try{
+    const corners=[
+      nativeToWgs84(x0,y0),
+      nativeToWgs84(x1,y0),
+      nativeToWgs84(x1,y1),
+      nativeToWgs84(x0,y1)
+    ].map(p=>[p[1],p[0]]);
+
+    pixelBoundaryLayer=L.polygon(corners,{
+      color:"#f59e0b",
+      weight:2,
+      opacity:.95,
+      fill:true,
+      fillColor:"#f59e0b",
+      fillOpacity:.05,
+      dashArray:"7 5",
+      interactive:false
+    }).addTo(map);
+  }catch(e){
+    clearPixelBoundary();
+  }
 }
 
 async function samplePoint(lat,lon){
   const token=++demSampleToken;
 
   curCoord.innerText=lon.toFixed(5)+", "+lat.toFixed(5);
-  if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
+
+  if(marker)marker.setLatLng([lat,lon]);
+  else marker=L.marker([lat,lon]).addTo(map);
+
   updateStatus(L.latLng(lat,lon));
   lastDemSample=null;
+  clearPixelBoundary();
 
   if(!demImage){
     curZ.innerText="-";
+    cellZ.innerText="-";
     avg3Z.innerText="-";
+    avg5Z.innerText="-";
+    bilinearZ.innerText="-";
     return;
   }
 
-  if(demProcessingMode!=="normal"){
-    curZ.innerText="읽는 중...";
-    avg3Z.innerText="읽는 중...";
-  }
+  curZ.innerText="읽는 중...";
+  cellZ.innerText="읽는 중...";
+  avg3Z.innerText="읽는 중...";
+  avg5Z.innerText="읽는 중...";
+  bilinearZ.innerText="읽는 중...";
 
   try{
     const d=await readDem(lat,lon);
@@ -1398,18 +1561,35 @@ async function samplePoint(lat,lon){
 
     if(!d||d.z===null){
       curZ.innerText="범위 밖";
+      cellZ.innerText="-";
       avg3Z.innerText="-";
+      avg5Z.innerText="-";
+      bilinearZ.innerText="-";
       return;
     }
 
     lastDemSample={
-      lat:lat,lon:lon,x:d.x,y:d.y,
-      row:d.r,col:d.c,z:d.z,
-      avg3:d.st?d.st.avg:null
+      lat,lon,
+      x:d.x,y:d.y,
+      row:d.r,col:d.c,
+      rowFloat:d.rowFloat,
+      colFloat:d.colFloat,
+      z:d.z,
+      avg3:d.st3?d.st3.avg:null,
+      avg5:d.st5?d.st5.avg:null,
+      bilinear:d.bilinear
     };
 
-    curZ.innerText=d.z.toFixed(2)+" m";
-    avg3Z.innerText=d.st?d.st.avg.toFixed(2)+" m":"-";
+    cellZ.innerText=d.z.toFixed(2)+" m";
+    avg3Z.innerText=d.st3?d.st3.avg.toFixed(2)+" m":"-";
+    avg5Z.innerText=d.st5?d.st5.avg.toFixed(2)+" m":"-";
+    bilinearZ.innerText=Number.isFinite(d.bilinear)?d.bilinear.toFixed(2)+" m":"-";
+
+    updateDisplayedSampleValue();
+    drawPixelBoundary(d.r,d.c);
+
+    const displayMode=document.getElementById("sampleDisplayMode")?.value||"avg3";
+    const displayValue=getSampleValue(lastDemSample,displayMode);
 
     log.innerText=
       `좌표 샘플\n`+
@@ -1417,49 +1597,26 @@ async function samplePoint(lat,lon){
       `경도: ${lon.toFixed(7)}\n`+
       `row: ${d.r}\n`+
       `col: ${d.c}\n`+
-      `DEM: ${d.z.toFixed(3)} m\n`+
-      `3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m\n`+
+      `단일 셀: ${d.z.toFixed(3)} m\n`+
+      `3×3 평균: ${d.st3?d.st3.avg.toFixed(3):"-"} m\n`+
+      `5×5 평균: ${d.st5?d.st5.avg.toFixed(3):"-"} m\n`+
+      `쌍선형 보간: ${Number.isFinite(d.bilinear)?d.bilinear.toFixed(3):"-"} m\n`+
+      `표시값 (${sampleModeLabel(displayMode)}): ${displayValue===null?"-":displayValue.toFixed(3)} m\n`+
       `DEM CRS: ${demCrs}\n`+
-      `읽기: ${demProcessingMode==="normal"?"메모리 Raster":"원본 Window 3×3"}`;
+      `읽기: ${demProcessingMode==="normal"?"메모리 Raster":"원본 Window"}`;
   }catch(err){
     if(token!==demSampleToken)return;
+
     curZ.innerText="읽기 실패";
+    cellZ.innerText="-";
     avg3Z.innerText="-";
+    avg5Z.innerText="-";
+    bilinearZ.innerText="-";
+    clearPixelBoundary();
+
     log.innerText="DEM 지점 읽기 실패: "+err.message;
   }
 }
-function mixColor(a,b,t,alpha){
-  const k=Math.max(0,Math.min(1,t));
-  return[
-    Math.round(a[0]+(b[0]-a[0])*k),
-    Math.round(a[1]+(b[1]-a[1])*k),
-    Math.round(a[2]+(b[2]-a[2])*k),
-    alpha
-  ];
-}
-
-function gradientColor(v,min,max,alpha){
-  if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min)return[0,200,255,alpha];
-  const t=Math.max(0,Math.min(1,(v-min)/(max-min)));
-
-  const stops=[
-    [0.00,[0,70,255]],
-    [0.25,[0,220,255]],
-    [0.50,[0,220,80]],
-    [0.75,[255,225,0]],
-    [1.00,[255,55,0]]
-  ];
-
-  for(let i=1;i<stops.length;i++){
-    if(t<=stops[i][0]){
-      const a=stops[i-1],b=stops[i];
-      const local=(t-a[0])/(b[0]-a[0]);
-      return mixColor(a[1],b[1],local,alpha);
-    }
-  }
-  return[255,55,0,alpha];
-}
-
 function color(v,alpha,mode="terrain",autoMin=null,autoMax=null){
   if(mode==="river"){
     if(v<=-5)return[15,45,180,alpha];
@@ -1553,9 +1710,13 @@ function resetDemMemory(){
   demGeoKeys=null;
   lastDemSample=null;
 
+  clearPixelBoundary();
   curCoord.innerText="-";
   curZ.innerText="-";
+  if(window.cellZ)cellZ.innerText="-";
   avg3Z.innerText="-";
+  if(window.avg5Z)avg5Z.innerText="-";
+  if(window.bilinearZ)bilinearZ.innerText="-";
   maxZ.innerText="-";
   minZ.innerText="-";
   avgZ.innerText="-";
@@ -1711,6 +1872,13 @@ function toggleSwitch(el,type){
   if(type==="scale"&&window.scaleBox)scaleBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="coord")statusBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="heat"||type==="dem")setOverlayOpacity();
+  if(type==="pixel"){
+    if(el.classList.contains("on")&&lastDemSample){
+      drawPixelBoundary(lastDemSample.row,lastDemSample.col);
+    }else{
+      clearPixelBoundary();
+    }
+  }
 }
 
 const VALIDATION_STANDARDS={
@@ -1914,13 +2082,17 @@ function updateValidationStats(){
 }
 
 function addValidationPoint(){
-  if(!raster){alert("먼저 DEM을 열어주세요.");return}
+  if(!demImage){alert("먼저 DEM을 열어주세요.");return}
   if(!lastDemSample){alert("지도에서 기록할 지점을 먼저 클릭해주세요.");return}
 
   const mode=currentValidationMode();
   const sampleMode=vEl("validationSampleMode").value;
-  const demValue=sampleMode==="avg3" && Number.isFinite(lastDemSample.avg3)
-    ?lastDemSample.avg3:lastDemSample.z;
+  const demValue=getSampleValue(lastDemSample,sampleMode);
+
+  if(demValue===null){
+    alert("선택한 샘플링 방식의 유효한 DEM 값이 없습니다.");
+    return;
+  }
   const type=vEl("validationType").value;
 
   if(mode==="simulation"){
@@ -2121,7 +2293,7 @@ function exportValidationCsv(){
       standardLabel,
       validationTypeLabel(r.type),
       r.included?"Y":"N",
-      r.sampleMode==="avg3"?"3x3 평균":"단일 셀",
+      sampleModeLabel(r.sampleMode),
       Number(r.lat).toFixed(8),
       Number(r.lon).toFixed(8),
       r.crs||"",
@@ -2191,6 +2363,7 @@ if(vworldBtn){
   });
 }
 initMap();
+if(document.getElementById("sampleDisplayMode"))sampleDisplayMode.value="avg3";
 updateHeatLegend();
 updateValidationTarget();
 updateValidationModeUi();
