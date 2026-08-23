@@ -190,7 +190,13 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     <div class="rangeRow"><input id="demOpacity" type="range" min="10" max="100" value="100" oninput="setOverlayOpacity()"><span id="demOpText">100%</span></div>
 
     <div class="row">Heat Map <span id="heatSw" class="switch on" onclick="toggleSwitch(this,'heat')"></span></div>
+    <select id="heatMode" onchange="redrawHeatmapSafe()">
+      <option value="river" selected>하천 저고도 강조 (-5 ~ 30 m)</option>
+      <option value="terrain">일반 지형 (기존 구간)</option>
+      <option value="auto">DEM 전체범위 자동</option>
+    </select>
     <div class="bar"></div>
+    <div id="heatLegendText" class="help" style="margin-top:4px">-5m 이하 → 0m → 5m → 10m → 20m → 30m · 30m 초과는 약하게 표시</div>
     <div class="rangeRow"><input id="heatOpacity" type="range" min="10" max="100" value="60" oninput="setOverlayOpacity()"><span id="heatOpText">60%</span></div>
 
     <hr>
@@ -544,8 +550,33 @@ function updateFavoriteButton(){
 
 function loadRiverCoordCache(){
   try{riverCoordCache=JSON.parse(localStorage.getItem(RIVER_COORD_CACHE_KEY)||"{}")||{}}catch(e){riverCoordCache={}}
+  sanitizeRiverCoordCache();
 }
 function saveRiverCoordCache(){try{localStorage.setItem(RIVER_COORD_CACHE_KEY,JSON.stringify(riverCoordCache))}catch(e){}}
+
+function sanitizeRiverCoordCache(){
+  let changed=false;
+
+  for(const [key,value] of Object.entries(riverCoordCache||{})){
+    const lat=Number(value?.lat);
+    const lon=Number(value?.lon);
+
+    const invalid=
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon) ||
+      Math.abs(lat)<0.000001 ||
+      Math.abs(lon)<0.000001 ||
+      lat<32.0 || lat>39.8 ||
+      lon<124.0 || lon>132.0;
+
+    if(invalid){
+      delete riverCoordCache[key];
+      changed=true;
+    }
+  }
+
+  if(changed)saveRiverCoordCache();
+}
 
 function normalizeSearchText(v){return String(v||"").replace(/\s+/g,"").replaceAll("/","").toLowerCase()}
 
@@ -757,30 +788,121 @@ function scoreVWorldRiverPlace(item,r){
   let s=0;if(title===name)s+=100;if(title.includes(name))s+=50;if(item.category.includes("하천"))s+=30;if(region&&addr.includes(region))s+=40;if(city&&addr.includes(city))s+=60;
   return s;
 }
+
+function isUsableRiverCoordinate(r,lat,lon){
+  lat=Number(lat); lon=Number(lon);
+
+  if(!Number.isFinite(lat)||!Number.isFinite(lon))return false;
+  if(lat<-90||lat>90||lon<-180||lon>180)return false;
+
+  // 공식 하천일람의 미지정 대표좌표는 0,0으로 들어갈 수 있으므로 무효 처리
+  if(Math.abs(lat)<0.000001&&Math.abs(lon)<0.000001)return false;
+
+  // 공식 한국하천일람 레코드는 대한민국 주변 좌표만 정상 좌표로 인정
+  if(riverSourceType(r)==="official"){
+    if(lat<32.0||lat>39.8||lon<124.0||lon>132.0)return false;
+  }
+
+  return true;
+}
 async function resolveRiverCoordinates(r){
   const lat=Number(r[1]),lon=Number(r[2]);
-  if(Number.isFinite(lat)&&Number.isFinite(lon))return [lat,lon,Number(r[3]||14)];
-  const cacheKey=riverKey(r),cached=riverCoordCache[cacheKey];
-  if(cached&&Number.isFinite(Number(cached.lat))&&Number.isFinite(Number(cached.lon)))return [Number(cached.lat),Number(cached.lon),Number(cached.zoom||14)];
-  const builtin=findBuiltInCoordinate(r);if(builtin&&riverSourceType(r)!=="official")return builtin;
-  if(!getKey())return null;
-  const name=String(r[0]),region=riverRegion(r),city=riverCity(r),queries=[];
-  if(region&&city)queries.push(`${name} ${region} ${city}`);
-  if(region)queries.push(`${name} ${region}`);queries.push(name);
-  let candidates=[];
-  for(const q of queries){
-    try{const items=await fetchVWorldPlaces(q,30);candidates.push(...items)}catch(e){}
-    if(candidates.some(x=>normalizeSearchText(x.title)===normalizeSearchText(name)&&(!region||(x.road+" "+x.parcel).includes(region))&&(!city||(x.road+" "+x.parcel).includes(city))))break;
-  }
-  candidates=candidates.filter(x=>normalizeSearchText(x.title).includes(normalizeSearchText(name))||x.category.includes("하천"));
-  if(city){const cityMatches=candidates.filter(x=>(x.road+" "+x.parcel).includes(city));if(cityMatches.length)candidates=cityMatches}
-  if(region){const regional=candidates.filter(x=>(x.road+" "+x.parcel).includes(region));if(regional.length)candidates=regional}
-  candidates.sort((a,b)=>scoreVWorldRiverPlace(b,r)-scoreVWorldRiverPlace(a,r));
-  const best=candidates[0];if(!best)return null;
-  riverCoordCache[cacheKey]={lat:best.y,lon:best.x,zoom:14,title:best.title};saveRiverCoordCache();
-  r[1]=best.y;r[2]=best.x;r[3]=14;return [best.y,best.x,14];
-}
 
+  // 0,0 placeholder 및 공식 하천의 비정상 좌표는 직접 사용하지 않음
+  if(isUsableRiverCoordinate(r,lat,lon)){
+    return [lat,lon,Number(r[3]||14)];
+  }
+
+  const cacheKey=riverKey(r);
+  const cached=riverCoordCache[cacheKey];
+
+  if(cached){
+    const clat=Number(cached.lat),clon=Number(cached.lon);
+
+    if(isUsableRiverCoordinate(r,clat,clon)){
+      r[1]=clat;
+      r[2]=clon;
+      r[3]=Number(cached.zoom||14);
+      return [clat,clon,Number(cached.zoom||14)];
+    }
+
+    // 예전에 잘못 저장된 0,0 캐시는 자동 제거
+    delete riverCoordCache[cacheKey];
+    saveRiverCoordCache();
+  }
+
+  const builtin=findBuiltInCoordinate(r);
+  if(
+    builtin &&
+    riverSourceType(r)!=="official" &&
+    isUsableRiverCoordinate(r,builtin[0],builtin[1])
+  ){
+    return builtin;
+  }
+
+  if(!getKey())return null;
+
+  const name=String(r[0]);
+  const region=riverRegion(r);
+  const city=riverCity(r);
+  const queries=[];
+
+  if(region&&city)queries.push(`${name} ${region} ${city}`);
+  if(region)queries.push(`${name} ${region}`);
+  queries.push(name);
+
+  let candidates=[];
+
+  for(const q of queries){
+    try{
+      const items=await fetchVWorldPlaces(q,30);
+      candidates.push(...items);
+    }catch(e){}
+
+    if(candidates.some(x=>
+      normalizeSearchText(x.title)===normalizeSearchText(name) &&
+      (!region||(x.road+" "+x.parcel).includes(region)) &&
+      (!city||(x.road+" "+x.parcel).includes(city)) &&
+      isUsableRiverCoordinate(r,x.y,x.x)
+    ))break;
+  }
+
+  candidates=candidates
+    .filter(x=>isUsableRiverCoordinate(r,x.y,x.x))
+    .filter(x=>
+      normalizeSearchText(x.title).includes(normalizeSearchText(name)) ||
+      x.category.includes("하천")
+    );
+
+  if(city){
+    const cityMatches=candidates.filter(x=>(x.road+" "+x.parcel).includes(city));
+    if(cityMatches.length)candidates=cityMatches;
+  }
+
+  if(region){
+    const regional=candidates.filter(x=>(x.road+" "+x.parcel).includes(region));
+    if(regional.length)candidates=regional;
+  }
+
+  candidates.sort((a,b)=>scoreVWorldRiverPlace(b,r)-scoreVWorldRiverPlace(a,r));
+
+  const best=candidates[0];
+  if(!best)return null;
+
+  riverCoordCache[cacheKey]={
+    lat:best.y,
+    lon:best.x,
+    zoom:14,
+    title:best.title
+  };
+  saveRiverCoordCache();
+
+  r[1]=best.y;
+  r[2]=best.x;
+  r[3]=14;
+
+  return [best.y,best.x,14];
+}
 async function applySelectedRiver(){
   if(!selectedRiver){alert("하천을 선택하세요.");return}
   const coords=await resolveRiverCoordinates(selectedRiver);
@@ -791,7 +913,13 @@ async function applySelectedRiver(){
     log.innerText=`선택된 하천: ${selectedRiver[0]}\n하천코드: ${meta.code||"-"}\n지도 좌표: 미확인`;
     return;
   }
-  const [lat,lon,zoom]=coords;map.setView([lat,lon],zoom);
+  const [lat,lon,zoom]=coords;
+  if(!isUsableRiverCoordinate(selectedRiver,lat,lon)){
+    alert("하천 좌표를 정상적으로 확인하지 못했습니다. VWorld API Key와 지역 정보를 확인해주세요.");
+    log.innerText=`선택된 하천: ${selectedRiver[0]}\n지도 좌표: 비정상 좌표 차단`;
+    return;
+  }
+  map.setView([lat,lon],zoom);
   if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
   const meta=riverMeta(selectedRiver);
   log.innerText=`선택된 하천: ${selectedRiver[0]}\n하천코드: ${meta.code||"-"}\n구분: ${meta.grade||"-"}\n권역: ${meta.basin||"-"}\n지역: ${meta.region||selectedRiver[4]||"-"}\n좌표: ${lat}, ${lon}`;
@@ -1300,9 +1428,91 @@ async function samplePoint(lat,lon){
     log.innerText="DEM 지점 읽기 실패: "+err.message;
   }
 }
-function color(v,alpha){
-  if(v<5)return[0,0,255,alpha]; if(v<20)return[0,200,255,alpha]; if(v<50)return[0,255,0,alpha]; if(v<100)return[255,255,0,alpha]; return[255,0,0,alpha];
+function mixColor(a,b,t,alpha){
+  const k=Math.max(0,Math.min(1,t));
+  return[
+    Math.round(a[0]+(b[0]-a[0])*k),
+    Math.round(a[1]+(b[1]-a[1])*k),
+    Math.round(a[2]+(b[2]-a[2])*k),
+    alpha
+  ];
 }
+
+function gradientColor(v,min,max,alpha){
+  if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min)return[0,200,255,alpha];
+  const t=Math.max(0,Math.min(1,(v-min)/(max-min)));
+
+  const stops=[
+    [0.00,[0,70,255]],
+    [0.25,[0,220,255]],
+    [0.50,[0,220,80]],
+    [0.75,[255,225,0]],
+    [1.00,[255,55,0]]
+  ];
+
+  for(let i=1;i<stops.length;i++){
+    if(t<=stops[i][0]){
+      const a=stops[i-1],b=stops[i];
+      const local=(t-a[0])/(b[0]-a[0]);
+      return mixColor(a[1],b[1],local,alpha);
+    }
+  }
+  return[255,55,0,alpha];
+}
+
+function color(v,alpha,mode="terrain",autoMin=null,autoMax=null){
+  if(mode==="river"){
+    if(v<=-5)return[15,45,180,alpha];
+    if(v<0)return mixColor([15,45,180],[0,170,255],(v+5)/5,alpha);
+    if(v<5)return mixColor([0,170,255],[0,240,170],v/5,alpha);
+    if(v<10)return mixColor([0,240,170],[80,220,40],(v-5)/5,alpha);
+    if(v<20)return mixColor([80,220,40],[255,225,0],(v-10)/10,alpha);
+    if(v<=30)return mixColor([255,225,0],[255,70,0],(v-20)/10,alpha);
+
+    return[120,120,120,Math.max(10,Math.round(alpha*0.12))];
+  }
+
+  if(mode==="auto"){
+    return gradientColor(v,autoMin,autoMax,alpha);
+  }
+
+  if(v<5)return[0,0,255,alpha];
+  if(v<20)return[0,200,255,alpha];
+  if(v<50)return[0,255,0,alpha];
+  if(v<100)return[255,255,0,alpha];
+  return[255,0,0,alpha];
+}
+
+function getHeatMode(){
+  return document.getElementById("heatMode")?.value||"river";
+}
+
+function updateHeatLegend(autoMin=null,autoMax=null){
+  const el=document.getElementById("heatLegendText");
+  if(!el)return;
+
+  const mode=getHeatMode();
+
+  if(mode==="river"){
+    el.innerText="-5m 이하 → 0m → 5m → 10m → 20m → 30m · 30m 초과는 약하게 표시";
+  }else if(mode==="auto"){
+    if(Number.isFinite(autoMin)&&Number.isFinite(autoMax)){
+      el.innerText=`현재 DEM 범위 자동: ${autoMin.toFixed(1)} m → ${autoMax.toFixed(1)} m`;
+    }else{
+      el.innerText="현재 DEM 최소~최대 고도를 자동으로 색상 범위에 맞춥니다.";
+    }
+  }else{
+    el.innerText="<5m 파랑 · 5~20m 청록 · 20~50m 초록 · 50~100m 노랑 · 100m 이상 빨강";
+  }
+}
+
+function redrawHeatmapSafe(){
+  updateHeatLegend();
+  drawHeatmap().catch(err=>{
+    log.innerText="Heatmap 다시 그리기 실패: "+err.message;
+  });
+}
+window.redrawHeatmapSafe=redrawHeatmapSafe;
 
 function clearHeatOverlay(){
   heatRenderToken++;
@@ -1410,6 +1620,26 @@ async function drawHeatmap(){
   const ctx=canvas.getContext("2d");
   const image=ctx.createImageData(srcWidth,srcHeight);
   const alpha=Math.round(Number(heatOpacity.value)/100*255);
+  const heatModeValue=getHeatMode();
+
+  let autoMin=null,autoMax=null;
+  if(heatModeValue==="auto"){
+    let mn=Infinity,mx=-Infinity;
+
+    for(let i=0;i<srcRaster.length;i++){
+      const n=Number(srcRaster[i]);
+      if(!isValidDemValue(n))continue;
+      if(n<mn)mn=n;
+      if(n>mx)mx=n;
+    }
+
+    if(Number.isFinite(mn)&&Number.isFinite(mx)){
+      autoMin=mn;
+      autoMax=mx;
+    }
+  }
+
+  updateHeatLegend(autoMin,autoMax);
 
   for(let i=0;i<srcRaster.length;i++){
     const v=Number(srcRaster[i]);
@@ -1420,7 +1650,7 @@ async function drawHeatmap(){
       continue;
     }
 
-    const c=color(v,alpha);
+    const c=color(v,alpha,heatModeValue,autoMin,autoMax);
     image.data[p]=c[0];
     image.data[p+1]=c[1];
     image.data[p+2]=c[2];
@@ -1453,9 +1683,16 @@ async function drawHeatmap(){
       map.fitBounds(bounds);
       setOverlayOpacity();
 
+      const heatLabel={
+        river:"하천 저고도",
+        terrain:"일반 지형",
+        auto:"자동 범위"
+      }[heatModeValue]||heatModeValue;
+
       log.innerText+=
         `\nHeatmap: ${srcWidth} x ${srcHeight}`+
-        (demProcessingMode==="normal"?"":" (대형 DEM 미리보기)");
+        (demProcessingMode==="normal"?"":" (대형 DEM 미리보기)")+
+        `\nHeatmap 모드: ${heatLabel}`;
 
       resolve();
     },"image/png");
@@ -1954,6 +2191,7 @@ if(vworldBtn){
   });
 }
 initMap();
+updateHeatLegend();
 updateValidationTarget();
 updateValidationModeUi();
 </script>
