@@ -1617,6 +1617,43 @@ async function samplePoint(lat,lon){
     log.innerText="DEM 지점 읽기 실패: "+err.message;
   }
 }
+
+function mixColor(a,b,t,alpha){
+  const k=Math.max(0,Math.min(1,t));
+  return[
+    Math.round(a[0]+(b[0]-a[0])*k),
+    Math.round(a[1]+(b[1]-a[1])*k),
+    Math.round(a[2]+(b[2]-a[2])*k),
+    alpha
+  ];
+}
+
+function gradientColor(v,min,max,alpha){
+  if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min){
+    return[0,200,255,alpha];
+  }
+
+  const t=Math.max(0,Math.min(1,(v-min)/(max-min)));
+  const stops=[
+    [0.00,[0,70,255]],
+    [0.25,[0,220,255]],
+    [0.50,[0,220,80]],
+    [0.75,[255,225,0]],
+    [1.00,[255,55,0]]
+  ];
+
+  for(let i=1;i<stops.length;i++){
+    if(t<=stops[i][0]){
+      const a=stops[i-1];
+      const b=stops[i];
+      const local=(t-a[0])/(b[0]-a[0]);
+      return mixColor(a[1],b[1],local,alpha);
+    }
+  }
+
+  return[255,55,0,alpha];
+}
+
 function color(v,alpha,mode="terrain",autoMin=null,autoMax=null){
   if(mode==="river"){
     if(v<=-5)return[15,45,180,alpha];
