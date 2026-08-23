@@ -537,6 +537,10 @@ let map, baseLayer, marker, blankLayer, pixelBoundaryLayer=null;
 let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
 let heatOverlay=null, heatObjectUrl=null, selectedRiver=null, lastLatLng=null;
 let lastDemSample=null, demNoData=null;
+
+// 지도 mousemove는 requestAnimationFrame으로 한 프레임당 1회만 처리
+let mapMouseFrame=0;
+let pendingMapMouseLatLng=null;
 let demCrs=null;
 let demCrsCode=null;
 let demCrsSource="-";
@@ -556,6 +560,7 @@ let demProcessingMode="none";
 let demPreviewRaster=null;
 let demPreviewWidth=0;
 let demPreviewHeight=0;
+let demPreviewStats=null;
 let demWindowCache=new Map();
 let demSampleToken=0;
 let demLoadToken=0;
@@ -600,6 +605,25 @@ let riverSearchTimer=null;
 let riverSearchSerial=0;
 let riverCoordCache={};
 
+
+function scheduleMapMouseUpdate(latlng){
+  pendingMapMouseLatLng=latlng;
+
+  if(mapMouseFrame)return;
+
+  mapMouseFrame=requestAnimationFrame(()=>{
+    mapMouseFrame=0;
+
+    const ll=pendingMapMouseLatLng;
+    pendingMapMouseLatLng=null;
+
+    if(!ll)return;
+
+    updateStatus(ll);
+    updateMeasurementPreview(ll);
+  });
+}
+
 function initMap(){
   map=L.map("map",{zoomControl:false}).setView([35.186645,127.622747],9);
 
@@ -608,8 +632,7 @@ function initMap(){
   },0);
 
   map.on("mousemove",e=>{
-    updateStatus(e.latlng);
-    updateMeasurementPreview(e.latlng);
+    scheduleMapMouseUpdate(e.latlng);
   });
 
   map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
@@ -1390,6 +1413,52 @@ function computeRasterStats(arr){
   return {min:mn,max:mx,avg:sum/count,count};
 }
 
+
+function createNormalDemPreview(){
+  if(!raster||!width||!height){
+    throw new Error("DEM 전체 Raster가 준비되지 않았습니다.");
+  }
+
+  // 이미 같은 DEM에서 만든 preview가 있으면 재사용
+  if(
+    demPreviewRaster &&
+    demPreviewWidth>0 &&
+    demPreviewHeight>0
+  ){
+    return demPreviewStats||computeRasterStats(demPreviewRaster);
+  }
+
+  const d=previewDimensions(width,height);
+  demPreviewWidth=d.width;
+  demPreviewHeight=d.height;
+
+  const preview=new Float32Array(demPreviewWidth*demPreviewHeight);
+
+  for(let y=0;y<demPreviewHeight;y++){
+    const sy=Math.min(
+      height-1,
+      Math.floor(y/d.scale)
+    );
+
+    const srcRow=sy*width;
+    const dstRow=y*demPreviewWidth;
+
+    for(let x=0;x<demPreviewWidth;x++){
+      const sx=Math.min(
+        width-1,
+        Math.floor(x/d.scale)
+      );
+
+      preview[dstRow+x]=raster[srcRow+sx];
+    }
+  }
+
+  demPreviewRaster=preview;
+  demPreviewStats=computeRasterStats(preview);
+
+  return demPreviewStats;
+}
+
 async function createLargeDemPreview(){
   if(!demImage)throw new Error("DEM 이미지가 준비되지 않았습니다.");
 
@@ -1405,7 +1474,8 @@ async function createLargeDemPreview(){
   });
 
   demPreviewRaster=result[0];
-  return computeRasterStats(demPreviewRaster);
+  demPreviewStats=computeRasterStats(demPreviewRaster);
+  return demPreviewStats;
 }
 
 demFile.addEventListener("change",async e=>{
@@ -2018,7 +2088,9 @@ function updateHeatLegend(autoMin=null,autoMax=null){
 
 function redrawHeatmapSafe(){
   updateHeatLegend();
-  drawHeatmap().catch(err=>{
+
+  // 색상 모드만 바꿀 때는 사용자가 보고 있던 지도 위치를 유지
+  drawHeatmap({fitToDem:false}).catch(err=>{
     log.innerText="Heatmap 다시 그리기 실패: "+err.message;
   });
 }
@@ -2046,6 +2118,7 @@ function resetDemMemory(){
   demPreviewRaster=null;
   demPreviewWidth=0;
   demPreviewHeight=0;
+  demPreviewStats=null;
   demWindowCache.clear();
 
   demImage=null;
@@ -2093,8 +2166,10 @@ function resetDemMemory(){
   renderValidationMarkers();
 }
 
-async function drawHeatmap(){
+async function drawHeatmap(options={}){
   if(!demImage)return;
+
+  const fitToDem=options.fitToDem!==false;
 
   clearHeatOverlay();
   const renderToken=heatRenderToken;
@@ -2106,24 +2181,18 @@ async function drawHeatmap(){
   if(demProcessingMode==="normal"){
     if(!raster)return;
 
-    const d=previewDimensions(width,height);
-    srcWidth=d.width;
-    srcHeight=d.height;
+    createNormalDemPreview();
 
-    const preview=new Float32Array(srcWidth*srcHeight);
-    for(let y=0;y<srcHeight;y++){
-      const sy=Math.min(height-1,Math.floor(y/d.scale));
-      for(let x=0;x<srcWidth;x++){
-        const sx=Math.min(width-1,Math.floor(x/d.scale));
-        preview[y*srcWidth+x]=raster[sy*width+sx];
-      }
-    }
-    srcRaster=preview;
+    srcRaster=demPreviewRaster;
+    srcWidth=demPreviewWidth;
+    srcHeight=demPreviewHeight;
   }else{
     if(!demPreviewRaster){
       await createLargeDemPreview();
     }
+
     if(renderToken!==heatRenderToken)return;
+
     srcRaster=demPreviewRaster;
     srcWidth=demPreviewWidth;
     srcHeight=demPreviewHeight;
@@ -2140,18 +2209,13 @@ async function drawHeatmap(){
 
   let autoMin=null,autoMax=null;
   if(heatModeValue==="auto"){
-    let mn=Infinity,mx=-Infinity;
-
-    for(let i=0;i<srcRaster.length;i++){
-      const n=Number(srcRaster[i]);
-      if(!isValidDemValue(n))continue;
-      if(n<mn)mn=n;
-      if(n>mx)mx=n;
+    if(!demPreviewStats){
+      demPreviewStats=computeRasterStats(srcRaster);
     }
 
-    if(Number.isFinite(mn)&&Number.isFinite(mx)){
-      autoMin=mn;
-      autoMax=mx;
+    if(demPreviewStats){
+      autoMin=demPreviewStats.min;
+      autoMax=demPreviewStats.max;
     }
   }
 
@@ -2196,7 +2260,10 @@ async function drawHeatmap(){
         {opacity:Number(heatOpacity.value)/100}
       ).addTo(map);
 
-      map.fitBounds(bounds);
+      if(fitToDem){
+        map.fitBounds(bounds);
+      }
+
       setOverlayOpacity();
 
       const heatLabel={
@@ -3442,7 +3509,9 @@ function drawXYProfileCanvas(canvasId,rows,axisLabel){
   const canvas=document.getElementById(canvasId);
   if(!canvas)return;
 
+  // 패널이 닫혀 실제 폭이 0인 순간에는 불필요한 렌더링을 건너뜀
   const parent=canvas.parentElement;
+  if(parent && parent.getBoundingClientRect().width===0)return;
   const cssWidth=Math.max(260,(parent?.clientWidth||320)-10);
   const cssHeight=145;
   const dpr=Math.max(1,window.devicePixelRatio||1);

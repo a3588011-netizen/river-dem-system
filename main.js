@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 let mainWindow;
 let forceClose = false;
 let closeDialogOpen = false;
+let unresponsiveDialogOpen = false;
 
 async function saveProjectBeforeClose(){
   if(!mainWindow || mainWindow.isDestroyed()) return false;
@@ -136,14 +137,28 @@ function createWindow(){
   });
 
   mainWindow.on('unresponsive',async ()=>{
-    if(!mainWindow || mainWindow.isDestroyed()) return;
+    if(
+      !mainWindow ||
+      mainWindow.isDestroyed() ||
+      unresponsiveDialogOpen
+    ) return;
 
-    await dialog.showMessageBox(mainWindow,{
-      type:'warning',
-      title:'RiverDEM',
-      message:'RiverDEM이 일시적으로 응답하지 않습니다.',
-      detail:'대용량 DEM 처리 중이라면 잠시 기다린 뒤 상태를 확인해주세요.'
-    });
+    unresponsiveDialogOpen = true;
+
+    try{
+      await dialog.showMessageBox(mainWindow,{
+        type:'warning',
+        title:'RiverDEM',
+        message:'RiverDEM이 일시적으로 응답하지 않습니다.',
+        detail:'대용량 DEM 처리 중이라면 잠시 기다린 뒤 상태를 확인해주세요.'
+      });
+    }finally{
+      unresponsiveDialogOpen = false;
+    }
+  });
+
+  mainWindow.on('responsive',()=>{
+    unresponsiveDialogOpen = false;
   });
 
   mainWindow.on('close',(event)=>{
