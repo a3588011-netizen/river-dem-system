@@ -72,6 +72,27 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .cancelBtn{background:#e5e7eb;color:#374151}
 .saveBtn{background:#2563eb;color:white}
 
+
+.validationBox{margin-top:10px;padding:12px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc}
+.validationBox select,.validationBox input{margin-top:6px}
+.validationTarget{margin-top:8px;padding:8px;border-radius:8px;background:#eef2ff;color:#3730a3;font-size:11px;font-weight:800;line-height:1.45}
+.validationActions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.validationBtn{padding:9px 8px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:900;cursor:pointer}
+.validationBtn.secondary{background:#475569}
+.validationBtn.danger{background:#b91c1c}
+.validationStats{display:grid;grid-template-columns:1fr auto;gap:7px;margin-top:10px;font-size:12px}
+.validationStats div:nth-child(odd){color:#64748b;font-weight:800}
+.validationStats div:nth-child(even){font-weight:900;text-align:right}
+.validationJudge{margin-top:9px;padding:9px;border-radius:8px;text-align:center;font-weight:900;background:#e5e7eb;color:#374151;line-height:1.45}
+.validationJudge.pass{background:#dcfce7;color:#166534}
+.validationJudge.fail{background:#fee2e2;color:#991b1b}
+.validationJudge.wait{background:#e0f2fe;color:#075985}
+.validationList{margin-top:10px;max-height:190px;overflow:auto;border-top:1px solid #e5e7eb;padding-top:6px}
+.validationItem{padding:7px 0;border-bottom:1px solid #e5e7eb;font-size:11px;line-height:1.45}
+.validationItem strong{font-size:12px}
+.validationItem.excluded{color:#64748b}
+.validationItem button{float:right;border:0;border-radius:6px;padding:3px 7px;background:#e5e7eb;color:#374151;font-weight:900;cursor:pointer}
+
 </style>
 </head>
 <body>
@@ -152,6 +173,57 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div>DEM 파일</div><div id="demName">-</div>
       <div>해상도</div><div id="demRes">-</div>
     </div>
+
+    <hr>
+    <div class="label">현실 대조 / DEM 검증</div>
+    <div class="validationBox">
+      <div class="help">
+        검증 지점을 지도에서 클릭한 뒤 실제 측량 고도를 입력합니다.
+        지면 계열만 공식 정확도 판정에 포함하며 수면·교량·식생은 별도 기록합니다.
+      </div>
+
+      <div id="validationTarget" class="validationTarget">대상: 하천 미선택 / DEM 미선택</div>
+
+      <select id="validationStandard">
+        <option value="1">1 m × 1 m DEM 기준</option>
+        <option value="5">5 m × 5 m DEM 기준</option>
+      </select>
+      <div class="help">1 m: RMSE ≤ 0.50 m / 최대오차 ≤ 0.75 m · 5 m: RMSE ≤ 1.00 m / 최대오차 ≤ 2.00 m · 도엽당 검사점 5점</div>
+
+      <select id="validationType">
+        <option value="ground">지면 / 제방 / 도로 / 둔치 (판정 포함)</option>
+        <option value="water">수면 (별도 기록)</option>
+        <option value="bridge">교량 (판정 제외)</option>
+        <option value="vegetation">식생 (판정 제외)</option>
+        <option value="other">기타 (별도 기록)</option>
+      </select>
+
+      <select id="validationSampleMode">
+        <option value="cell">DEM 단일 셀 값 사용</option>
+        <option value="avg3">3×3 평균값 사용</option>
+      </select>
+
+      <input id="validationReferenceZ" type="number" step="0.001" placeholder="실제 측량 고도 (m)">
+      <input id="validationNote" type="text" placeholder="메모 (선택)">
+
+      <div class="validationActions">
+        <button class="validationBtn" onclick="addValidationPoint()">현재 지점 추가</button>
+        <button class="validationBtn secondary" onclick="exportValidationCsv()">CSV 내보내기</button>
+      </div>
+      <div class="validationActions">
+        <button class="validationBtn danger" style="grid-column:1 / -1" onclick="clearCurrentValidationGroup()">현재 대상 기록 초기화</button>
+      </div>
+
+      <div class="validationStats">
+        <div>판정 포함 지점</div><div id="validationCount">0 / 5</div>
+        <div>평균 편차</div><div id="validationBias">-</div>
+        <div>RMSE</div><div id="validationRmse">-</div>
+        <div>최대 절대오차</div><div id="validationMax">-</div>
+      </div>
+
+      <div id="validationJudge" class="validationJudge wait">도엽당 5점 이상 확보 후 판정합니다.</div>
+      <div id="validationList" class="validationList"></div>
+    </div>
   </div>
 </div>
 
@@ -200,7 +272,12 @@ const REGIONS={
 
 let map, baseLayer, marker, blankLayer;
 let raster=null,width=0,height=0,originX=0,originY=0,pixelX=0,pixelY=0,minX=0,maxX=0,minY=0,maxY=0;
-let heatOverlay=null, selectedRiver=null, lastLatLng=null;
+let heatOverlay=null, heatObjectUrl=null, selectedRiver=null, lastLatLng=null;
+let lastDemSample=null, demNoData=null;
+let validationRecords=[];
+let validationLayer=null;
+let heatRenderToken=0;
+const VALIDATION_STORAGE_KEY="riverdem_validation_records_v1";
 
 function initMap(){
   map=L.map("map",{zoomControl:false}).setView([35.186645,127.622747],9);
@@ -212,7 +289,13 @@ function initMap(){
   map.on("mousemove",e=>updateStatus(e.latlng));
   map.on("zoomend",()=>{statusZoom.innerText="레벨: "+map.getZoom()});
   map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
+  validationLayer=L.layerGroup().addTo(map);
+  loadValidationRecords();
   renderRivers();
+  updateValidationTarget();
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
 }
 function getKey(){return localStorage.getItem("vworld_key")||localStorage.getItem("VWORLD_API_KEY")||""}
 function setVWorldKey(){
@@ -305,8 +388,8 @@ function renderRivers(){
     const title=document.createElement("div");title.className="groupTitle";title.innerHTML=`⌄ ${g}<span class="regionBadge">${filtered.length}</span>`;group.appendChild(title);
     filtered.forEach(r=>{
       const d=document.createElement("div");d.className="river";d.innerHTML=`<span>›</span><span>${r[0]}</span><span class="chk"></span>`;
-      d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;};
-      d.ondblclick=()=>{selectedRiver=r;applySelectedRiver();};
+      d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;updateValidationTarget();updateValidationStats();renderValidationList();renderValidationMarkers();};
+      d.ondblclick=()=>{selectedRiver=r;updateValidationTarget();applySelectedRiver();};
       group.appendChild(d);
     });
     riverList.appendChild(group);
@@ -331,25 +414,86 @@ window.toggleLeft=toggleLeft;
 window.toggleRight=toggleRight;
 demFile.addEventListener("change",async e=>{
   const f=e.target.files[0]; if(!f)return;
+
+  resetDemMemory();
   log.innerText="DEM 로드 중...";
   demName.innerText=f.name;
+  updateValidationTarget();
+
   try{
     const t=await GeoTIFF.fromArrayBuffer(await f.arrayBuffer());
     const img=await t.getImage();
-    width=img.getWidth();height=img.getHeight();
-    const tie=img.getTiePoints()[0];const s=img.getFileDirectory().ModelPixelScale;
-    originX=tie.x;originY=tie.y;pixelX=s[0];pixelY=-s[1];
-    minX=Math.min(originX,originX+pixelX*width);maxX=Math.max(originX,originX+pixelX*width);
-    minY=Math.min(originY,originY+pixelY*height);maxY=Math.max(originY,originY+pixelY*height);
+    width=img.getWidth();
+    height=img.getHeight();
+
+    if(!warnLargeDem(width,height)){
+      log.innerText="DEM 로드 취소됨";
+      resetDemMemory();
+      return;
+    }
+
+    const tie=img.getTiePoints()[0];
+    const s=img.getFileDirectory().ModelPixelScale;
+    if(!tie||!s)throw new Error("GeoTIFF 위치/해상도 정보를 읽지 못했습니다.");
+
+    originX=tie.x;
+    originY=tie.y;
+    pixelX=s[0];
+    pixelY=-s[1];
+
+    minX=Math.min(originX,originX+pixelX*width);
+    maxX=Math.max(originX,originX+pixelX*width);
+    minY=Math.min(originY,originY+pixelY*height);
+    maxY=Math.max(originY,originY+pixelY*height);
+
+    if(typeof img.getGDALNoData==="function"){
+      const nd=Number(img.getGDALNoData());
+      demNoData=Number.isFinite(nd)?nd:null;
+    }else{
+      demNoData=null;
+    }
+
     raster=(await img.readRasters({samples:[0]}))[0];
-    let vals=[]; for(let i=0;i<raster.length;i++){const n=Number(raster[i]); if(Number.isFinite(n))vals.push(n);}
-    const mn=Math.min(...vals), mx=Math.max(...vals), av=vals.reduce((a,b)=>a+b,0)/vals.length;
-    minZ.innerText=mn.toFixed(1)+" m"; maxZ.innerText=mx.toFixed(1)+" m"; avgZ.innerText=av.toFixed(1)+" m"; demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+
+    let mn=Infinity,mx=-Infinity,sum=0,count=0;
+    for(let i=0;i<raster.length;i++){
+      const n=Number(raster[i]);
+      if(!isValidDemValue(n))continue;
+      if(n<mn)mn=n;
+      if(n>mx)mx=n;
+      sum+=n;
+      count++;
+    }
+
+    if(!count)throw new Error("유효한 DEM 고도값이 없습니다.");
+
+    const av=sum/count;
+    minZ.innerText=mn.toFixed(1)+" m";
+    maxZ.innerText=mx.toFixed(1)+" m";
+    avgZ.innerText=av.toFixed(1)+" m";
+    demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+
     drawHeatmap();
-    log.innerText=`DEM 로드 완료\n파일: ${f.name}\n크기: ${width} x ${height}`;
-  }catch(err){log.innerText="DEM 로드 실패: "+err.message;}
+    updateValidationTarget();
+    updateValidationStats();
+    renderValidationList();
+    renderValidationMarkers();
+
+    log.innerText=`DEM 로드 완료
+파일: ${f.name}
+크기: ${width} x ${height}
+NoData: ${demNoData===null?"미지정":demNoData}`;
+  }catch(err){
+    resetDemMemory();
+    log.innerText="DEM 로드 실패: "+err.message;
+  }
 });
-function valueAt(r,c){if(!raster||r<0||c<0||r>=height||c>=width)return null;const v=Number(raster[r*width+c]);return Number.isFinite(v)?v:null}
+function isValidDemValue(v){
+  if(!Number.isFinite(v))return false;
+  if(demNoData!==null && v===demNoData)return false;
+  return true;
+}
+function valueAt(r,c){if(!raster||r<0||c<0||r>=height||c>=width)return null;const v=Number(raster[r*width+c]);return isValidDemValue(v)?v:null}
 function stats3(r,c){let a=[];for(let y=r-1;y<=r+1;y++)for(let x=c-1;x<=c+1;x++){const v=valueAt(y,x);if(v!==null)a.push(v)}if(!a.length)return null;return{avg:a.reduce((p,q)=>p+q,0)/a.length,min:Math.min(...a),max:Math.max(...a)}}
 function readDem(lat,lon){
   const p=proj4("EPSG:4326","EPSG:5179",[lon,lat]);const x=p[0],y=p[1];
@@ -361,29 +505,147 @@ function samplePoint(lat,lon){
   curCoord.innerText=lon.toFixed(5)+", "+lat.toFixed(5);
   if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
   updateStatus(L.latLng(lat,lon));
-  if(!raster){curZ.innerText="-";avg3Z.innerText="-";return}
+
+  lastDemSample=null;
+
+  if(!raster){
+    curZ.innerText="-";
+    avg3Z.innerText="-";
+    return;
+  }
+
   const d=readDem(lat,lon);
-  if(!d||d.z===null){curZ.innerText="범위 밖";avg3Z.innerText="-";return}
+  if(!d||d.z===null){
+    curZ.innerText="범위 밖";
+    avg3Z.innerText="-";
+    return;
+  }
+
+  lastDemSample={
+    lat:lat,lon:lon,x:d.x,y:d.y,
+    row:d.r,col:d.c,z:d.z,
+    avg3:d.st?d.st.avg:null
+  };
+
   curZ.innerText=d.z.toFixed(2)+" m";
   avg3Z.innerText=d.st?d.st.avg.toFixed(2)+" m":"-";
-  log.innerText=`좌표 샘플\n위도: ${lat.toFixed(7)}\n경도: ${lon.toFixed(7)}\nrow: ${d.r}\ncol: ${d.c}\nDEM: ${d.z.toFixed(3)} m\n3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m`;
+  log.innerText=`좌표 샘플
+위도: ${lat.toFixed(7)}
+경도: ${lon.toFixed(7)}
+row: ${d.r}
+col: ${d.c}
+DEM: ${d.z.toFixed(3)} m
+3x3 평균: ${d.st?d.st.avg.toFixed(3):"-"} m`;
 }
 function color(v,alpha){
   if(v<5)return[0,0,255,alpha]; if(v<20)return[0,200,255,alpha]; if(v<50)return[0,255,0,alpha]; if(v<100)return[255,255,0,alpha]; return[255,0,0,alpha];
 }
+
+function clearHeatOverlay(){
+  heatRenderToken++;
+  if(heatOverlay){
+    map.removeLayer(heatOverlay);
+    heatOverlay=null;
+  }
+  if(heatObjectUrl){
+    URL.revokeObjectURL(heatObjectUrl);
+    heatObjectUrl=null;
+  }
+}
+function resetDemMemory(){
+  clearHeatOverlay();
+  raster=null;
+  width=0;height=0;
+  originX=0;originY=0;
+  pixelX=0;pixelY=0;
+  minX=0;maxX=0;minY=0;maxY=0;
+  demNoData=null;
+  lastDemSample=null;
+  curCoord.innerText="-";
+  curZ.innerText="-";
+  avg3Z.innerText="-";
+  maxZ.innerText="-";
+  minZ.innerText="-";
+  avgZ.innerText="-";
+  demName.innerText="-";
+  demRes.innerText="-";
+  updateValidationTarget();
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
+}
+function warnLargeDem(w,h){
+  const pixels=w*h;
+  if(pixels>25000000){
+    return confirm(
+      "DEM 크기가 큽니다.\n\n"+
+      "픽셀 수: "+pixels.toLocaleString()+"\n"+
+      "대용량 DEM은 로딩에 시간이 걸릴 수 있습니다.\n\n"+
+      "계속 진행할까요?"
+    );
+  }
+  return true;
+}
+
 function drawHeatmap(){
   if(!raster)return;
-  if(heatOverlay)map.removeLayer(heatOverlay);
-  const canvas=document.createElement("canvas");canvas.width=width;canvas.height=height;
-  const ctx=canvas.getContext("2d");const img=ctx.createImageData(width,height);
+  clearHeatOverlay();
+  const renderToken=heatRenderToken;
+
+  const maxCanvas=1200;
+  const scale=Math.min(1,maxCanvas/Math.max(width,height));
+  const cw=Math.max(1,Math.round(width*scale));
+  const ch=Math.max(1,Math.round(height*scale));
+  const canvas=document.createElement("canvas");
+  canvas.width=cw;
+  canvas.height=ch;
+
+  const ctx=canvas.getContext("2d");
+  const img=ctx.createImageData(cw,ch);
   const alpha=Math.round(Number(heatOpacity.value)/100*255);
-  for(let i=0;i<raster.length;i++){const c=color(Number(raster[i]),alpha),p=i*4;img.data[p]=c[0];img.data[p+1]=c[1];img.data[p+2]=c[2];img.data[p+3]=c[3];}
+
+  for(let y=0;y<ch;y++){
+    const srcY=Math.min(height-1,Math.floor(y/scale));
+    for(let x=0;x<cw;x++){
+      const srcX=Math.min(width-1,Math.floor(x/scale));
+      const v=Number(raster[srcY*width+srcX]);
+      const p=(y*cw+x)*4;
+      if(!isValidDemValue(v)){
+        img.data[p+3]=0;
+        continue;
+      }
+      const c=color(v,alpha);
+      img.data[p]=c[0];
+      img.data[p+1]=c[1];
+      img.data[p+2]=c[2];
+      img.data[p+3]=c[3];
+    }
+  }
+
   ctx.putImageData(img,0,0);
-  function to4326(x,y){const p=proj4("EPSG:5179","EPSG:4326",[x,y]);return[p[1],p[0]]}
-  const nw=to4326(minX,maxY),se=to4326(maxX,minY),bounds=[[se[0],nw[1]],[nw[0],se[1]]];
-  heatOverlay=L.imageOverlay(canvas.toDataURL(),bounds,{opacity:Number(heatOpacity.value)/100}).addTo(map);
-  map.fitBounds(bounds);
-  setOverlayOpacity();
+
+  function to4326(x,y){
+    const p=proj4("EPSG:5179","EPSG:4326",[x,y]);
+    return[p[1],p[0]];
+  }
+
+  const nw=to4326(minX,maxY);
+  const se=to4326(maxX,minY);
+  const bounds=[[se[0],nw[1]],[nw[0],se[1]]];
+
+  canvas.toBlob(blob=>{
+    if(renderToken!==heatRenderToken)return;
+    if(!blob){
+      log.innerText+="\nHeatmap 생성 실패: Blob 생성 실패";
+      return;
+    }
+    heatObjectUrl=URL.createObjectURL(blob);
+    heatOverlay=L.imageOverlay(heatObjectUrl,bounds,{opacity:Number(heatOpacity.value)/100}).addTo(map);
+    map.fitBounds(bounds);
+    setOverlayOpacity();
+    log.innerText+=`
+Heatmap 렌더링: ${cw} x ${ch}${scale<1?" (축소)":""}`;
+  },"image/png");
 }
 function setOverlayOpacity(){
   demOpText.innerText=demOpacity.value+"%"; heatOpText.innerText=heatOpacity.value+"%";
@@ -399,6 +661,190 @@ function toggleSwitch(el,type){
   if(type==="coord")statusBox.style.display=el.classList.contains("on")?"flex":"none";
   if(type==="heat"||type==="dem")setOverlayOpacity();
 }
+
+const VALIDATION_STANDARDS={
+  "1":{label:"1 m × 1 m",rmseLimit:0.50,maxLimit:0.75,minPoints:5},
+  "5":{label:"5 m × 5 m",rmseLimit:1.00,maxLimit:2.00,minPoints:5}
+};
+function vEl(id){return document.getElementById(id)}
+function currentRiverName(){return selectedRiver?selectedRiver[0]:"미선택"}
+function currentDemName(){const v=(demName.innerText||"").trim();return v&&v!=="-"?v:"미선택"}
+function currentValidationKey(){return currentRiverName()+"||"+currentDemName()+"||"+vEl("validationStandard").value}
+function validationTypeLabel(type){
+  return {ground:"지면",water:"수면",bridge:"교량",vegetation:"식생",other:"기타"}[type]||type;
+}
+function saveValidationRecords(){
+  try{localStorage.setItem(VALIDATION_STORAGE_KEY,JSON.stringify(validationRecords))}catch(e){}
+}
+function loadValidationRecords(){
+  try{
+    const raw=localStorage.getItem(VALIDATION_STORAGE_KEY);
+    const arr=raw?JSON.parse(raw):[];
+    validationRecords=Array.isArray(arr)?arr:[];
+  }catch(e){validationRecords=[]}
+}
+function updateValidationTarget(){
+  const el=vEl("validationTarget");
+  if(!el)return;
+  el.innerText=`대상: ${currentRiverName()} / ${currentDemName()}`;
+}
+function currentValidationRecords(){
+  const river=currentRiverName();
+  const dem=currentDemName();
+  const standard=vEl("validationStandard").value;
+  return validationRecords.filter(r=>r.river===river && r.demFile===dem && r.standard===standard);
+}
+function currentIncludedRecords(){return currentValidationRecords().filter(r=>r.included)}
+function getValidationStats(){
+  const rows=currentIncludedRecords();
+  if(!rows.length)return null;
+  let sum=0,sumSq=0,maxAbs=0;
+  for(const r of rows){
+    const e=Number(r.error);
+    if(!Number.isFinite(e))continue;
+    sum+=e;
+    sumSq+=e*e;
+    const a=Math.abs(e);
+    if(a>maxAbs)maxAbs=a;
+  }
+  const n=rows.length;
+  return {n:n,bias:sum/n,rmse:Math.sqrt(sumSq/n),maxAbs:maxAbs};
+}
+function updateValidationStats(){
+  const countEl=vEl("validationCount");
+  if(!countEl)return;
+  const standard=VALIDATION_STANDARDS[vEl("validationStandard").value];
+  const s=getValidationStats();
+  const judge=vEl("validationJudge");
+  if(!s){
+    countEl.innerText=`0 / ${standard.minPoints}`;
+    vEl("validationBias").innerText="-";
+    vEl("validationRmse").innerText="-";
+    vEl("validationMax").innerText="-";
+    judge.className="validationJudge wait";
+    judge.innerText=`${standard.label}: 도엽당 ${standard.minPoints}점 이상 확보 후 판정합니다.`;
+    return;
+  }
+  countEl.innerText=`${s.n} / ${standard.minPoints}`;
+  vEl("validationBias").innerText=`${s.bias>=0?"+":""}${s.bias.toFixed(3)} m`;
+  vEl("validationRmse").innerText=s.rmse.toFixed(3)+" m";
+  vEl("validationMax").innerText=s.maxAbs.toFixed(3)+" m";
+  if(s.n<standard.minPoints){
+    judge.className="validationJudge wait";
+    judge.innerText=`검증 중 ${s.n}/${standard.minPoints} · 현재 RMSE ${s.rmse.toFixed(3)} m · 최대 ${s.maxAbs.toFixed(3)} m`;
+    return;
+  }
+  const pass=s.rmse<=standard.rmseLimit && s.maxAbs<=standard.maxLimit;
+  judge.className="validationJudge "+(pass?"pass":"fail");
+  judge.innerText=`${pass?"적합":"기준 초과"} · RMSE ${s.rmse.toFixed(3)} / ${standard.rmseLimit.toFixed(2)} m · 최대 ${s.maxAbs.toFixed(3)} / ${standard.maxLimit.toFixed(2)} m`;
+}
+function addValidationPoint(){
+  if(!raster){alert("먼저 DEM을 열어주세요.");return}
+  if(!lastDemSample){alert("지도에서 검증 지점을 먼저 클릭해주세요.");return}
+  const input=vEl("validationReferenceZ");
+  const reference=Number(input.value);
+  if(!Number.isFinite(reference)){alert("실제 측량 고도를 입력해주세요.");input.focus();return}
+  const mode=vEl("validationSampleMode").value;
+  const demValue=mode==="avg3" && Number.isFinite(lastDemSample.avg3)?lastDemSample.avg3:lastDemSample.z;
+  const type=vEl("validationType").value;
+  const error=demValue-reference;
+  const record={
+    id:Date.now()+Math.random(),
+    river:currentRiverName(),
+    demFile:currentDemName(),
+    standard:vEl("validationStandard").value,
+    type:type,
+    included:type==="ground",
+    sampleMode:mode,
+    lat:lastDemSample.lat,lon:lastDemSample.lon,
+    x:lastDemSample.x,y:lastDemSample.y,row:lastDemSample.row,col:lastDemSample.col,
+    referenceZ:reference,demZ:demValue,error:error,absError:Math.abs(error),
+    note:(vEl("validationNote").value||"").trim(),
+    createdAt:new Date().toISOString()
+  };
+  validationRecords.push(record);
+  saveValidationRecords();
+  input.value="";
+  vEl("validationNote").value="";
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
+  log.innerText=`검증 지점 추가\n하천: ${record.river}\nDEM: ${record.demFile}\n구분: ${validationTypeLabel(record.type)}\n실측: ${record.referenceZ.toFixed(3)} m\nDEM: ${record.demZ.toFixed(3)} m\n오차(DEM-실측): ${record.error>=0?"+":""}${record.error.toFixed(3)} m`;
+}
+function escapeHtml(v){
+  return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+}
+function renderValidationList(){
+  const el=vEl("validationList");
+  if(!el)return;
+  const rows=currentValidationRecords().slice().reverse();
+  if(!rows.length){el.innerHTML='<div class="help">현재 대상의 검증 기록이 없습니다.</div>';return}
+  el.innerHTML=rows.map(r=>{
+    const sign=r.error>=0?"+":"";
+    return `<div class="validationItem${r.included?"":" excluded"}">
+      <button onclick="deleteValidationPoint(${JSON.stringify(r.id)})">삭제</button>
+      <strong>${validationTypeLabel(r.type)}</strong><br>
+      실측 ${Number(r.referenceZ).toFixed(3)} m / DEM ${Number(r.demZ).toFixed(3)} m<br>
+      오차 ${sign}${Number(r.error).toFixed(3)} m${r.included?"":" · 판정 제외"}
+      ${r.note?`<br>메모: ${escapeHtml(r.note)}`:""}
+    </div>`;
+  }).join("");
+}
+function deleteValidationPoint(id){
+  validationRecords=validationRecords.filter(r=>String(r.id)!==String(id));
+  saveValidationRecords();
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
+}
+function clearCurrentValidationGroup(){
+  const rows=currentValidationRecords();
+  if(!rows.length)return;
+  if(!confirm(`현재 대상의 검증 기록 ${rows.length}개를 삭제할까요?`))return;
+  const key=currentValidationKey();
+  validationRecords=validationRecords.filter(r=>`${r.river}||${r.demFile}||${r.standard}`!==key);
+  saveValidationRecords();
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
+  log.innerText="현재 대상 검증 기록 초기화 완료";
+}
+function renderValidationMarkers(){
+  if(!validationLayer)return;
+  validationLayer.clearLayers();
+  const rows=currentValidationRecords();
+  for(const r of rows){
+    const marker=L.circleMarker([r.lat,r.lon],{radius:5,weight:2,fillOpacity:.85});
+    const sign=Number(r.error)>=0?"+":"";
+    marker.bindPopup(`<b>${escapeHtml(validationTypeLabel(r.type))}</b><br>실측 ${Number(r.referenceZ).toFixed(3)} m<br>DEM ${Number(r.demZ).toFixed(3)} m<br>오차 ${sign}${Number(r.error).toFixed(3)} m${r.included?"":"<br>판정 제외"}`);
+    marker.addTo(validationLayer);
+  }
+}
+function exportValidationCsv(){
+  if(!validationRecords.length){alert("내보낼 검증 기록이 없습니다.");return}
+  const headers=["하천","DEM파일","기준","구분","판정포함","샘플방식","위도","경도","EPSG5179_X","EPSG5179_Y","row","col","실측고도_m","DEM고도_m","오차_DEM-실측_m","절대오차_m","메모","기록시각"];
+  const q=v=>'"'+String(v??"").replaceAll('"','""')+'"';
+  const lines=[headers.map(q).join(",")];
+  for(const r of validationRecords){
+    lines.push([
+      r.river,r.demFile,r.standard==="1"?"1 m × 1 m":"5 m × 5 m",validationTypeLabel(r.type),r.included?"Y":"N",
+      r.sampleMode==="avg3"?"3x3 평균":"단일 셀",Number(r.lat).toFixed(8),Number(r.lon).toFixed(8),Number(r.x).toFixed(3),Number(r.y).toFixed(3),r.row,r.col,
+      Number(r.referenceZ).toFixed(3),Number(r.demZ).toFixed(3),Number(r.error).toFixed(3),Number(r.absError).toFixed(3),r.note||"",r.createdAt||""
+    ].map(q).join(","));
+  }
+  const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const now=new Date(),pad=n=>String(n).padStart(2,"0");
+  const stamp=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"_"+pad(now.getHours())+pad(now.getMinutes());
+  a.href=url;
+  a.download=`RiverDEM_검증결과_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 function toggleRight(){
   rightPanel.classList.toggle("collapsed");
   const btn=rightPanel.querySelector(".collapseBtn");
@@ -415,6 +861,15 @@ function goCurrent(){navigator.geolocation?.getCurrentPosition(p=>map.setView([p
 window.setVWorldKey=setVWorldKey;
 window.closeVWorldModal=closeVWorldModal;
 window.saveVWorldKey=saveVWorldKey;
+window.addValidationPoint=addValidationPoint;
+window.exportValidationCsv=exportValidationCsv;
+window.clearCurrentValidationGroup=clearCurrentValidationGroup;
+window.deleteValidationPoint=deleteValidationPoint;
+
+const validationStandardEl=document.getElementById("validationStandard");
+if(validationStandardEl){
+  validationStandardEl.addEventListener("change",()=>{updateValidationStats();renderValidationList();renderValidationMarkers();});
+}
 
 const vworldBtn=document.getElementById("vworldBtn");
 if(vworldBtn){
