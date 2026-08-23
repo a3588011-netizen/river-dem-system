@@ -246,6 +246,55 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 }
 .print3dQrRow input{width:auto}
 
+#githubModal{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+  z-index:1000001;align-items:center;justify-content:center
+}
+#githubModal .modalBox{
+  width:560px;max-width:calc(100vw - 40px);max-height:calc(100vh - 60px);
+  overflow:auto;background:#fff;border-radius:14px;padding:22px;
+  box-shadow:0 12px 40px rgba(0,0,0,.35)
+}
+#githubModal h2{margin:0 0 6px;font-size:21px}
+.githubHelp{font-size:12px;color:#64748b;line-height:1.55;margin-bottom:12px}
+.githubGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.githubField.full{grid-column:1/-1}
+.githubField label{
+  display:block;font-size:11px;font-weight:900;color:#475569;margin-bottom:5px
+}
+.githubField input{
+  width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;
+  border-radius:8px;font-size:12px;font-weight:800;background:#fff;color:#0f172a;
+  user-select:text;-webkit-user-select:text;cursor:text
+}
+.githubField input:focus{
+  outline:2px solid rgba(37,99,235,.28);outline-offset:1px
+}
+.githubTokenRow{
+  grid-column:1/-1;display:flex;align-items:center;gap:8px;
+  padding:9px 10px;border:1px solid #dbeafe;border-radius:9px;background:#eff6ff;
+  font-size:12px;font-weight:900;color:#1e3a8a
+}
+.githubTokenRow input{width:auto}
+.githubStatus{
+  margin-top:12px;padding:10px;border-radius:9px;background:#f1f5f9;color:#334155;
+  font-size:11px;font-weight:800;line-height:1.55;white-space:pre-line
+}
+.githubStatus.ok{background:#ecfdf5;color:#065f46}
+.githubStatus.err{background:#fef2f2;color:#991b1b}
+.githubActions{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px
+}
+.githubBtn{
+  border:0;border-radius:9px;padding:10px 8px;font-size:12px;font-weight:900;
+  cursor:pointer;background:#2563eb;color:white
+}
+.githubBtn.secondary{background:#475569}
+.githubBtn.success{background:#047857}
+.githubBtn.full{grid-column:1/-1}
+.print3dBtn.github{background:#111827}
+
+
 
 </style>
 </head>
@@ -678,6 +727,76 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <button class="print3dBtn secondary" onclick="closePrint3dModal()">닫기</button>
       <button class="print3dBtn" onclick="exportPrint3dStl()">지형 STL만 생성</button>
       <button class="print3dBtn full" onclick="exportPrint3dQrSet()">최종 3D + QR 결과패키지 ZIP 생성</button>
+      <button class="print3dBtn full github" onclick="publishPrint3dToGithub()">GitHub Pages에 바로 게시</button>
+    </div>
+  </div>
+</div>
+
+
+<div id="githubModal"
+  onclick="event.stopPropagation()"
+  onmousedown="event.stopPropagation()"
+  onkeydown="event.stopPropagation()">
+  <div class="modalBox">
+    <h2>GitHub Pages 게시 설정</h2>
+    <div class="githubHelp">
+      현재 RiverDEM 결과를 저장소의 <b>results/&lt;결과ID&gt;/</b>에 바로 게시합니다.
+      7개 결과 파일은 blob으로 순차 전송한 뒤 마지막에 한 번의 커밋으로 main 브랜치에 반영합니다.
+      토큰은 HTML/localStorage에 저장하지 않습니다.
+    </div>
+
+    <div class="githubGrid">
+      <div class="githubField">
+        <label>GitHub 사용자 / 소유자</label>
+        <input id="githubOwner" type="text" value="a3588011-netizen"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="githubField">
+        <label>저장소</label>
+        <input id="githubRepo" type="text" value="river-dem-system"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="githubField">
+        <label>브랜치</label>
+        <input id="githubBranch" type="text" value="main"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="githubField">
+        <label>Pages 배포 위치</label>
+        <input type="text" value="/ (root)" disabled>
+      </div>
+
+      <div class="githubField full">
+        <label>GitHub Pages 기본 주소</label>
+        <input id="githubPagesBaseUrl" type="text" inputmode="url"
+          value="https://a3588011-netizen.github.io/river-dem-system/"
+          autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="githubField full">
+        <label>Fine-grained token · Contents: Read and write</label>
+        <input id="githubToken" type="password"
+          placeholder="github_pat_...  (저장된 토큰이 있으면 비워둬도 됩니다)"
+          autocomplete="new-password" spellcheck="false">
+      </div>
+
+      <label class="githubTokenRow">
+        <input id="githubRememberToken" type="checkbox" checked>
+        토큰을 이 PC에 보안 저장
+      </label>
+    </div>
+
+    <div id="githubStatus" class="githubStatus">
+      설정을 불러오는 중입니다.
+    </div>
+
+    <div class="githubActions">
+      <button class="githubBtn secondary" onclick="closeGithubSettingsModal()">닫기</button>
+      <button class="githubBtn" onclick="saveGithubSettings()">설정 저장</button>
+      <button class="githubBtn success full" onclick="testGithubConnection()">GitHub 연결 테스트</button>
     </div>
   </div>
 </div>
@@ -7436,17 +7555,234 @@ function print3dQrSettings(){
     byteLength
   };
 }
-async function exportPrint3dQrSet(){
-  if(print3dBusy)return;
 
-  if(!demImage){
-    alert("DEM을 먼저 열어주세요.");
+function githubBridgeReady(){
+  return !!(
+    window.riverdemGithub &&
+    typeof window.riverdemGithub.getConfig==="function"
+  );
+}
+
+function setGithubStatus(message,state=""){
+  const el=document.getElementById("githubStatus");
+  if(!el)return;
+
+  el.className="githubStatus"+(
+    state==="ok"?" ok":
+    state==="err"?" err":""
+  );
+  el.innerText=String(message||"");
+}
+
+function normalizeGithubPagesBaseUrlValue(value){
+  let url=String(value||"").trim();
+  if(!url)return "";
+
+  if(!/^https?:\/\//i.test(url)){
+    url="https://"+url.replace(/^\/+/,"");
+  }
+
+  return url.replace(/\/+$/,"")+"/";
+}
+
+function githubResultsBaseUrl(pagesBaseUrl){
+  const base=normalizeGithubPagesBaseUrlValue(pagesBaseUrl);
+  return base?base+"results/":"";
+}
+
+function bindGithubEditableInputs(){
+  const modal=document.getElementById("githubModal");
+  if(!modal)return;
+
+  modal.querySelectorAll('input:not([disabled])').forEach(el=>{
+    if(el.dataset.githubTypingBound==="1")return;
+    el.dataset.githubTypingBound="1";
+
+    [
+      "keydown","keyup","keypress",
+      "compositionstart","compositionupdate","compositionend",
+      "beforeinput","input","paste"
+    ].forEach(type=>{
+      el.addEventListener(type,e=>e.stopPropagation());
+    });
+
+    ["pointerdown","mousedown","click","dblclick"].forEach(type=>{
+      el.addEventListener(type,e=>e.stopPropagation());
+    });
+  });
+}
+
+async function openGithubSettingsModal(){
+  if(!githubBridgeReady()){
+    alert("GitHub 직접 게시는 설치된 Electron RiverDEM에서만 사용할 수 있습니다.");
     return;
   }
 
-  if(!print3dSelection){
-    alert("먼저 3D 출력 영역을 선택해주세요.");
+  const modal=document.getElementById("githubModal");
+  if(!modal)return;
+
+  bindGithubEditableInputs();
+  modal.style.display="flex";
+  setGithubStatus("GitHub 설정을 불러오는 중입니다.");
+
+  try{
+    const cfg=await window.riverdemGithub.getConfig();
+
+    const set=(id,value)=>{
+      const el=document.getElementById(id);
+      if(el&&value!==undefined&&value!==null){
+        el.value=String(value);
+      }
+    };
+
+    set("githubOwner",cfg.owner||"a3588011-netizen");
+    set("githubRepo",cfg.repo||"river-dem-system");
+    set("githubBranch",cfg.branch||"main");
+    set(
+      "githubPagesBaseUrl",
+      cfg.pagesBaseUrl||
+      "https://a3588011-netizen.github.io/river-dem-system/"
+    );
+
+    const remember=document.getElementById("githubRememberToken");
+    if(remember)remember.checked=cfg.rememberToken!==false;
+
+    const token=document.getElementById("githubToken");
+    if(token)token.value="";
+
+    setGithubStatus(
+      (cfg.hasToken
+        ?"저장된 GitHub 토큰이 있습니다."
+        :"GitHub 토큰을 입력해주세요.")+
+      "\n"+
+      (cfg.secureStorage
+        ?"Electron 보안 저장소 사용 가능"
+        :"보안 저장소를 사용할 수 없어 토큰은 이번 실행에서만 유지됩니다."),
+      cfg.hasToken?"ok":""
+    );
+  }catch(err){
+    setGithubStatus(
+      "GitHub 설정을 읽지 못했습니다.\n"+
+      (err?.message||String(err)),
+      "err"
+    );
+  }
+}
+
+function closeGithubSettingsModal(){
+  const modal=document.getElementById("githubModal");
+  if(modal)modal.style.display="none";
+}
+
+function readGithubSettingsForm(){
+  return {
+    owner:String(document.getElementById("githubOwner")?.value||"").trim(),
+    repo:String(document.getElementById("githubRepo")?.value||"").trim(),
+    branch:String(document.getElementById("githubBranch")?.value||"").trim(),
+    pagesBaseUrl:normalizeGithubPagesBaseUrlValue(
+      document.getElementById("githubPagesBaseUrl")?.value||""
+    ),
+    token:String(document.getElementById("githubToken")?.value||"").trim(),
+    rememberToken:document.getElementById("githubRememberToken")?.checked!==false
+  };
+}
+
+function syncGithubConfigToQr(cfg){
+  const pagesBase=githubResultsBaseUrl(cfg?.pagesBaseUrl||"");
+  if(!pagesBase)return;
+
+  const qrBase=document.getElementById("print3dQrBaseUrl");
+  if(qrBase){
+    qrBase.value=pagesBase;
+    updatePrint3dQrFinalUrl();
+    updatePrint3dInfo();
+  }
+}
+
+async function saveGithubSettings(showMessage=true){
+  if(!githubBridgeReady()){
+    alert("GitHub 직접 게시는 설치된 Electron RiverDEM에서만 사용할 수 있습니다.");
+    return null;
+  }
+
+  const form=readGithubSettingsForm();
+
+  if(!form.owner||!form.repo||!form.branch||!form.pagesBaseUrl){
+    const msg="사용자명, 저장소, 브랜치, Pages 주소를 모두 입력해주세요.";
+    setGithubStatus(msg,"err");
+    if(showMessage)alert(msg);
+    return null;
+  }
+
+  try{
+    setGithubStatus("GitHub 설정을 저장하는 중입니다.");
+
+    const cfg=await window.riverdemGithub.saveConfig(form);
+
+    const token=document.getElementById("githubToken");
+    if(token)token.value="";
+
+    syncGithubConfigToQr(cfg);
+
+    setGithubStatus(
+      "GitHub 설정 저장 완료\n"+
+      `${cfg.owner}/${cfg.repo} · ${cfg.branch}\n`+
+      `${cfg.pagesBaseUrl}\n`+
+      (cfg.hasToken?"토큰: 사용 가능":"토큰: 없음"),
+      "ok"
+    );
+
+    if(showMessage){
+      alert("GitHub 게시 설정을 저장했습니다.");
+    }
+
+    return cfg;
+  }catch(err){
+    const msg=
+      "GitHub 설정 저장 실패\n"+
+      (err?.message||String(err));
+
+    setGithubStatus(msg,"err");
+    if(showMessage)alert(msg);
+    return null;
+  }
+}
+
+async function testGithubConnection(){
+  if(!githubBridgeReady()){
+    alert("GitHub 직접 게시는 설치된 Electron RiverDEM에서만 사용할 수 있습니다.");
     return;
+  }
+
+  const cfg=await saveGithubSettings(false);
+  if(!cfg)return;
+
+  try{
+    setGithubStatus("GitHub 연결을 확인하는 중입니다.");
+
+    const result=
+      await window.riverdemGithub.testConnection();
+
+    setGithubStatus(
+      `연결 성공\n${result.fullName}\n브랜치: ${result.branch}\n현재 커밋: ${String(result.commitSha||"").slice(0,7)}`,
+      "ok"
+    );
+  }catch(err){
+    setGithubStatus(
+      "연결 실패\n"+
+      (err?.message||String(err)),
+      "err"
+    );
+  }
+}
+
+function collectPrint3dFinalSettings(){
+  if(!demImage){
+    throw new Error("DEM을 먼저 열어주세요.");
+  }
+
+  if(!print3dSelection){
+    throw new Error("먼저 3D 출력 영역을 선택해주세요.");
   }
 
   ensurePrint3dQrResultDefaults();
@@ -7454,42 +7790,34 @@ async function exportPrint3dQrSet(){
   const qrSettings=print3dQrSettings();
 
   if(!qrSettings.enabled){
-    alert("QR 결과 페이지 + 스티커 세트 옵션을 켜주세요.");
-    return;
+    throw new Error("QR 결과 페이지 + 스티커 세트 옵션을 켜주세요.");
   }
 
   if(!qrSettings.resultId){
-    alert("결과 ID를 입력해주세요.");
-    return;
+    throw new Error("결과 ID를 입력해주세요.");
   }
 
   if(!qrSettings.baseUrl){
-    alert("결과 페이지 기본 주소를 입력해주세요.");
-    return;
+    throw new Error("결과 페이지 기본 주소를 입력해주세요.");
   }
 
   if(!qrSettings.link){
-    alert("QR 최종 주소를 만들지 못했습니다.");
-    return;
+    throw new Error("QR 최종 주소를 만들지 못했습니다.");
   }
 
   if(qrSettings.byteLength>106){
-    alert(
-      `QR 최종 주소가 너무 깁니다. 현재 ${qrSettings.byteLength} bytes / 최대 106 bytes입니다. 기본 주소나 결과 ID를 짧게 해주세요.`
+    throw new Error(
+      `QR 최종 주소가 너무 깁니다. 현재 ${qrSettings.byteLength} bytes / 최대 106 bytes입니다.`
     );
-    return;
   }
 
   if(!/^https?:\/\//i.test(qrSettings.link)){
-    alert("결과 페이지 주소는 http:// 또는 https://로 시작해야 합니다.");
-    return;
+    throw new Error("결과 페이지 주소는 http:// 또는 https://로 시작해야 합니다.");
   }
 
   const plan=print3dMeshPlan();
-
   if(!plan){
-    alert("선택 영역이 너무 작거나 DEM 범위 밖입니다.");
-    return;
+    throw new Error("선택 영역이 너무 작거나 DEM 범위 밖입니다.");
   }
 
   const widthMm=getPrint3dNumericValue("print3dWidthMm",180);
@@ -7497,172 +7825,166 @@ async function exportPrint3dQrSet(){
   const zExag=getPrint3dNumericValue("print3dZExag",2);
 
   if(!Number.isFinite(widthMm)||widthMm<20||widthMm>500){
-    alert("모형 가로 크기는 20~500 mm 범위로 입력해주세요.");
-    return;
+    throw new Error("모형 가로 크기는 20~500 mm 범위로 입력해주세요.");
   }
 
   if(!Number.isFinite(baseMm)||baseMm<1||baseMm>50){
-    alert("바닥 두께는 1~50 mm 범위로 입력해주세요.");
-    return;
+    throw new Error("바닥 두께는 1~50 mm 범위로 입력해주세요.");
   }
 
   if(!Number.isFinite(zExag)||zExag<=0||zExag>20){
-    alert("Z축 과장 배율은 0 초과 20 이하로 입력해주세요.");
-    return;
+    throw new Error("Z축 과장 배율은 0 초과 20 이하로 입력해주세요.");
   }
 
-  print3dBusy=true;
+  return {
+    qrSettings,
+    plan,
+    widthMm,
+    baseMm,
+    zExag
+  };
+}
 
-  const info=document.getElementById("print3dInfo");
+async function buildPrint3dFinalAssets(progress){
+  const settings=collectPrint3dFinalSettings();
+  const {
+    qrSettings,
+    plan,
+    widthMm,
+    baseMm,
+    zExag
+  }=settings;
 
-  try{
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n1/6 DEM 읽기";
-
-    const data=await readPrint3dRaster(plan);
-
-    const scaleMmPerMeter=
-      plan.dims.widthM>0
-        ?widthMm/plan.dims.widthM
-        :0;
-
-    if(!Number.isFinite(scaleMmPerMeter)||scaleMmPerMeter<=0){
-      throw new Error("3D 모형 축척을 계산하지 못했습니다.");
+  const report=(step,message)=>{
+    if(typeof progress==="function"){
+      progress(step,message);
     }
+  };
 
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n2/6 지형 STL 생성";
+  report(1,"DEM 읽기");
 
-    await new Promise(resolve=>setTimeout(resolve,0));
+  const data=await readPrint3dRaster(plan);
 
-    const terrain=buildBinaryTerrainStl(
-      data.heights,
-      plan.cols,
-      plan.rows,
-      {
-        widthMm,
-        heightMm:plan.modelHeightMm,
-        baseMm,
-        minZ:data.stats.min,
-        scaleMmPerMeter,
-        zExag
-      }
+  const scaleMmPerMeter=
+    plan.dims.widthM>0
+      ?widthMm/plan.dims.widthM
+      :0;
+
+  if(!Number.isFinite(scaleMmPerMeter)||scaleMmPerMeter<=0){
+    throw new Error("3D 모형 축척을 계산하지 못했습니다.");
+  }
+
+  report(2,"지형 STL 생성");
+
+  await new Promise(resolve=>setTimeout(resolve,0));
+
+  const terrain=buildBinaryTerrainStl(
+    data.heights,
+    plan.cols,
+    plan.rows,
+    {
+      widthMm,
+      heightMm:plan.modelHeightMm,
+      baseMm,
+      minZ:data.stats.min,
+      scaleMmPerMeter,
+      zExag
+    }
+  );
+
+  report(3,"QR PNG · 트레이 생성");
+
+  const qrPng=await print3dQrPngBytes(
+    qrSettings.link
+  );
+
+  const qrTray=buildPrint3dQrTrayStl({
+    plateSizeMm:qrSettings.plateSizeMm,
+    stickerSizeMm:qrSettings.stickerSizeMm,
+    recessDepthMm:qrSettings.recessDepthMm
+  });
+
+  report(4,"Excel · 프로젝트 파일 생성");
+
+  const project=buildRiverDemProject();
+  const projectJson=JSON.stringify(project,null,2);
+
+  const analysisXlsx=
+    buildRiverDemXlsxBytes(
+      buildRiverDemAnalysisSheets()
     );
 
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n3/6 QR PNG · 트레이 생성";
+  const river=
+    currentRiverName()==="미선택"
+      ?"RiverDEM"
+      :currentRiverName();
 
-    const qrPng=await print3dQrPngBytes(
-      qrSettings.link
+  const demBase=String(
+    currentDemName()||"DEM"
+  ).replace(/\.[^.]+$/,"");
+
+  const safeBase=
+    projectFileSafeName(
+      `${river}_${demBase}`
     );
 
-    const qrTray=buildPrint3dQrTrayStl({
-      plateSizeMm:qrSettings.plateSizeMm,
-      stickerSizeMm:qrSettings.stickerSizeMm,
-      recessDepthMm:qrSettings.recessDepthMm
-    });
+  const terrainName=
+    projectFileSafeName(`${safeBase}_terrain`)+".stl";
 
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n4/6 Excel · 프로젝트 파일 생성";
+  const qrTrayName=
+    projectFileSafeName(`${safeBase}_QR_tray`)+".stl";
 
-    const project=buildRiverDemProject();
-    const projectJson=
-      JSON.stringify(project,null,2);
+  const qrPngName=
+    projectFileSafeName(`${safeBase}_QR`)+".png";
 
-    const analysisXlsx=
-      buildRiverDemXlsxBytes(
-        buildRiverDemAnalysisSheets()
-      );
+  const analysisName=
+    projectFileSafeName(`${safeBase}_analysis`)+".xlsx";
 
-    const river=
-      currentRiverName()==="미선택"
-        ?"RiverDEM"
-        :currentRiverName();
+  const projectName=
+    projectFileSafeName(`${safeBase}`)+".riverdem";
 
-    const demBase=String(
-      currentDemName()||"DEM"
-    ).replace(/\.[^.]+$/,"");
+  const resultJsonName="result.json";
 
-    const safeBase=
-      projectFileSafeName(
-        `${river}_${demBase}`
-      );
+  report(5,"결과 웹페이지 생성");
 
-    const terrainName=
-      projectFileSafeName(`${safeBase}_terrain`)+".stl";
+  const resultData=buildPrint3dResultData({
+    project,
+    plan,
+    terrain,
+    dataStats:data.stats,
+    qrSettings,
+    fileNames:{
+      terrain:terrainName,
+      qrTray:qrTrayName,
+      qrPng:qrPngName,
+      analysis:analysisName,
+      project:projectName,
+      resultJson:resultJsonName
+    }
+  });
 
-    const qrTrayName=
-      projectFileSafeName(`${safeBase}_QR_tray`)+".stl";
+  const resultJson=JSON.stringify(resultData,null,2);
+  const resultHtml=buildPrint3dResultPageHtml(resultData);
 
-    const qrPngName=
-      projectFileSafeName(`${safeBase}_QR`)+".png";
+  const scaleDenom=
+    plan.dims.widthM*1000/widthMm;
 
-    const analysisName=
-      projectFileSafeName(`${safeBase}_analysis`)+".xlsx";
+  const reliefMm=
+    (data.stats.max-data.stats.min)*
+    scaleMmPerMeter*
+    zExag;
 
-    const projectName=
-      projectFileSafeName(`${safeBase}`)+".riverdem";
+  const totalHeightMm=
+    baseMm+reliefMm;
 
-    const resultJsonName="result.json";
-
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n5/6 결과 웹페이지 생성";
-
-    const resultData=buildPrint3dResultData({
-      project,
-      plan,
-      terrain,
-      dataStats:data.stats,
-      qrSettings,
-      fileNames:{
-        terrain:terrainName,
-        qrTray:qrTrayName,
-        qrPng:qrPngName,
-        analysis:analysisName,
-        project:projectName,
-        resultJson:resultJsonName
-      }
-    });
-
-    const resultJson=
-      JSON.stringify(resultData,null,2);
-
-    const resultHtml=
-      buildPrint3dResultPageHtml(resultData);
-
-    if(info)info.innerText="최종 3D + QR 결과패키지를 만드는 중입니다...\n6/6 GitHub Pages 구조로 ZIP 묶기";
-
-    const scaleDenom=
-      plan.dims.widthM*1000/widthMm;
-
-    const reliefMm=
-      (data.stats.max-data.stats.min)*
-      scaleMmPerMeter*
-      zExag;
-
-    const totalHeightMm=
-      baseMm+reliefMm;
-
-    const webRoot=
-      `github-pages/results/${qrSettings.resultId}/`;
-
-    const readme=
+  const readme=
 `RiverDEM 최종 3D + QR 결과패키지
 
 [QR 최종 주소]
 ${qrSettings.link}
 
-[GitHub Pages 업로드 구조]
-이 ZIP의 github-pages 폴더 안에 있는 results 폴더를
-GitHub Pages가 배포되는 저장소 루트에 그대로 업로드하세요.
-
-업로드 후 주소:
-${qrSettings.link}
-
-폴더:
+[GitHub Pages 업로드 위치]
 results/${qrSettings.resultId}/
-  index.html
-  result.json
-  ${analysisName}
-  ${projectName}
-  ${terrainName}
-  ${qrTrayName}
-  ${qrPngName}
 
 [3D 지형]
 실제 영역: ${plan.dims.widthM.toFixed(1)} × ${plan.dims.heightM.toFixed(1)} m
@@ -7686,44 +8008,85 @@ QR 스티커의 흰색 quiet zone을 자르지 마세요.
 3D 출력용 Bilinear 보간은 표면을 부드럽게 만드는 시각적 재표본화이며 실제 DEM 정확도 향상이 아닙니다.
 `;
 
-    const zipBytes=excelZipStore([
-      {
-        name:"README_RiverDEM_3D.txt",
-        data:readme
-      },
-      {
-        name:webRoot+"index.html",
-        data:resultHtml
-      },
-      {
-        name:webRoot+resultJsonName,
-        data:resultJson
-      },
-      {
-        name:webRoot+analysisName,
-        data:analysisXlsx
-      },
-      {
-        name:webRoot+projectName,
-        data:projectJson
-      },
-      {
-        name:webRoot+terrainName,
-        data:new Uint8Array(terrain.buffer)
-      },
-      {
-        name:webRoot+qrTrayName,
-        data:new Uint8Array(qrTray.buffer)
-      },
-      {
-        name:webRoot+qrPngName,
-        data:qrPng.bytes
+  return {
+    ...settings,
+    data,
+    terrain,
+    qrPng,
+    qrTray,
+    project,
+    projectJson,
+    analysisXlsx,
+    safeBase,
+    terrainName,
+    qrTrayName,
+    qrPngName,
+    analysisName,
+    projectName,
+    resultJsonName,
+    resultData,
+    resultJson,
+    resultHtml,
+    readme,
+    scaleDenom,
+    totalHeightMm
+  };
+}
+
+function print3dFinalAssetFiles(assets,prefix=""){
+  const p=String(prefix||"");
+
+  return [
+    {path:p+"index.html",data:assets.resultHtml},
+    {path:p+assets.resultJsonName,data:assets.resultJson},
+    {path:p+assets.analysisName,data:assets.analysisXlsx},
+    {path:p+assets.projectName,data:assets.projectJson},
+    {path:p+assets.terrainName,data:new Uint8Array(assets.terrain.buffer)},
+    {path:p+assets.qrTrayName,data:new Uint8Array(assets.qrTray.buffer)},
+    {path:p+assets.qrPngName,data:assets.qrPng.bytes}
+  ];
+}
+
+async function exportPrint3dQrSet(){
+  if(print3dBusy)return;
+
+  print3dBusy=true;
+  const info=document.getElementById("print3dInfo");
+
+  try{
+    const assets=await buildPrint3dFinalAssets(
+      (step,message)=>{
+        if(info){
+          info.innerText=
+            `최종 3D + QR 결과패키지를 만드는 중입니다...\n${step}/6 ${message}`;
+        }
       }
-    ]);
+    );
+
+    if(info){
+      info.innerText=
+        "최종 3D + QR 결과패키지를 만드는 중입니다...\n6/6 GitHub Pages 구조로 ZIP 묶기";
+    }
+
+    const webRoot=
+      `github-pages/results/${assets.qrSettings.resultId}/`;
+
+    const files=[
+      {name:"README_RiverDEM_3D.txt",data:assets.readme},
+      ...print3dFinalAssetFiles(
+        assets,
+        webRoot
+      ).map(file=>({
+        name:file.path,
+        data:file.data
+      }))
+    ];
+
+    const zipBytes=excelZipStore(files);
 
     const zipName=
       projectFileSafeName(
-        `${safeBase}_${qrSettings.resultId}_FINAL`
+        `${assets.safeBase}_${assets.qrSettings.resultId}_FINAL`
       )+".zip";
 
     print3dDownloadBytes(
@@ -7735,16 +8098,16 @@ QR 스티커의 흰색 quiet zone을 자르지 마세요.
     if(info){
       info.innerText=
         `최종 결과패키지 생성 완료: ${zipName}\n`+
-        `QR 주소: ${qrSettings.link}\n`+
+        `QR 주소: ${assets.qrSettings.link}\n`+
         `웹 결과페이지 + Excel + .riverdem + STL 2개 + QR PNG 포함\n`+
-        `GitHub Pages 업로드 폴더: results/${qrSettings.resultId}/`;
+        `GitHub Pages 업로드 폴더: results/${assets.qrSettings.resultId}/`;
     }
 
     log.innerText=
       `최종 3D + QR 결과패키지 생성 완료\n`+
       `파일: ${zipName}\n`+
-      `QR: ${qrSettings.link}\n`+
-      `웹: results/${qrSettings.resultId}/index.html`;
+      `QR: ${assets.qrSettings.link}\n`+
+      `웹: results/${assets.qrSettings.resultId}/index.html`;
   }catch(err){
     if(info){
       info.innerText=
@@ -7760,6 +8123,172 @@ QR 스티커의 흰색 quiet zone을 자르지 마세요.
     print3dBusy=false;
   }
 }
+
+async function publishPrint3dToGithub(){
+  if(print3dBusy)return;
+
+  if(!githubBridgeReady()){
+    alert("GitHub 직접 게시는 설치된 Electron RiverDEM에서만 사용할 수 있습니다.");
+    return;
+  }
+
+  let publishSessionId=null;
+  const info=document.getElementById("print3dInfo");
+
+  try{
+    const cfg=await window.riverdemGithub.getConfig();
+
+    if(!cfg.hasToken){
+      await openGithubSettingsModal();
+      alert("먼저 GitHub 토큰을 저장하고 연결 테스트를 해주세요.");
+      return;
+    }
+
+    if(!cfg.owner||!cfg.repo||!cfg.branch||!cfg.pagesBaseUrl){
+      await openGithubSettingsModal();
+      alert("GitHub 게시 설정을 먼저 완료해주세요.");
+      return;
+    }
+
+    // 직접 게시에서는 QR이 반드시 실제 GitHub Pages 결과 주소를 가리키게 맞춤.
+    syncGithubConfigToQr(cfg);
+    ensurePrint3dQrResultDefaults();
+
+    print3dBusy=true;
+
+    const assets=await buildPrint3dFinalAssets(
+      (step,message)=>{
+        if(info){
+          info.innerText=
+            `GitHub 게시용 결과를 만드는 중입니다...\n${step}/5 ${message}`;
+        }
+      }
+    );
+
+    if(info){
+      info.innerText=
+        "GitHub 게시 준비 중...\n브랜치와 기존 결과 ID를 확인합니다.";
+    }
+
+    const begin=
+      await window.riverdemGithub.beginPublish({
+        resultId:assets.qrSettings.resultId,
+        commitMessage:
+          `RiverDEM result: ${assets.qrSettings.resultId}`
+      });
+
+    publishSessionId=begin.sessionId;
+
+    if(begin.exists){
+      const overwrite=confirm(
+        `results/${assets.qrSettings.resultId}/ 가 이미 존재합니다.\n\n기존 결과 파일을 새 결과로 교체하시겠습니까?`
+      );
+
+      if(!overwrite){
+        await window.riverdemGithub.cancelPublish(
+          publishSessionId
+        );
+        publishSessionId=null;
+
+        if(info)info.innerText="GitHub 게시를 취소했습니다.";
+        return;
+      }
+    }
+
+    const prefix=
+      `results/${assets.qrSettings.resultId}/`;
+
+    const files=
+      print3dFinalAssetFiles(
+        assets,
+        prefix
+      );
+
+    for(let i=0;i<files.length;i++){
+      const file=files[i];
+
+      if(info){
+        info.innerText=
+          `GitHub에 업로드 중...\n${i+1}/${files.length} ${file.path.split("/").pop()}`;
+      }
+
+      await window.riverdemGithub.uploadBlob(
+        publishSessionId,
+        file.path,
+        file.data
+      );
+    }
+
+    if(info){
+      info.innerText=
+        "GitHub 커밋 생성 중...\n기존 결과의 불필요한 파일을 정리하고 한 번의 커밋으로 반영합니다.";
+    }
+
+    const done=
+      await window.riverdemGithub.finalizePublish(
+        publishSessionId
+      );
+
+    publishSessionId=null;
+
+    if(info){
+      info.innerText=
+        `GitHub 게시 완료\n커밋: ${done.commitSha.slice(0,7)}\nPages 반영을 확인하는 중입니다...\n${done.pageUrl}`;
+    }
+
+    const pageCheck=
+      await window.riverdemGithub.waitForPages(
+        done.pageUrl,
+        70000
+      );
+
+    if(info){
+      info.innerText=
+        `GitHub 게시 완료\n커밋: ${done.commitSha.slice(0,7)}\n`+
+        (pageCheck.ready
+          ?"GitHub Pages 반영 확인 완료"
+          :"GitHub 커밋 완료 · Pages 배포는 아직 진행 중")+
+        `\n${done.pageUrl}`;
+    }
+
+    log.innerText=
+      `GitHub 직접 게시 완료\n`+
+      `경로: results/${assets.qrSettings.resultId}/\n`+
+      `커밋: ${done.commitSha}\n`+
+      `페이지: ${done.pageUrl}`;
+
+    const openNow=confirm(
+      (pageCheck.ready
+        ?"GitHub Pages 게시가 확인되었습니다."
+        :"GitHub에는 게시됐고 Pages 배포가 아직 반영 중일 수 있습니다.")+
+      "\n\n결과 페이지를 열까요?"
+    );
+
+    if(openNow){
+      await window.riverdemGithub.openExternal(
+        done.pageUrl
+      );
+    }
+  }catch(err){
+    if(publishSessionId){
+      try{
+        await window.riverdemGithub.cancelPublish(
+          publishSessionId
+        );
+      }catch(e){}
+    }
+
+    const message=
+      "GitHub 직접 게시 실패: "+
+      (err?.message||String(err));
+
+    if(info)info.innerText=message;
+    alert(message);
+  }finally{
+    print3dBusy=false;
+  }
+}
+
 
 function serializePrint3dProject(){
   return {
@@ -7866,6 +8395,11 @@ window.startPrint3dAreaSelection=startPrint3dAreaSelection;
 window.clearPrint3dSelection=clearPrint3dSelection;
 window.exportPrint3dStl=exportPrint3dStl;
 window.exportPrint3dQrSet=exportPrint3dQrSet;
+window.publishPrint3dToGithub=publishPrint3dToGithub;
+window.openGithubSettingsModal=openGithubSettingsModal;
+window.closeGithubSettingsModal=closeGithubSettingsModal;
+window.saveGithubSettings=saveGithubSettings;
+window.testGithubConnection=testGithubConnection;
 window.updatePrint3dInfo=updatePrint3dInfo;
 window.syncPrint3dInterpolationUi=syncPrint3dInterpolationUi;
 window.bindPrint3dEditableInputs=bindPrint3dEditableInputs;
