@@ -564,7 +564,16 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       </div>
 
       <div class="print3dField">
-        <label>메시 정밀도</label>
+        <label>표면 생성 방식</label>
+        <select id="print3dInterpolation" onchange="syncPrint3dInterpolationUi();updatePrint3dInfo()">
+          <option value="none" selected>원본 DEM · 정확도 우선</option>
+          <option value="100">3D 출력용 Bilinear 보간 · 100</option>
+          <option value="220">3D 출력용 Bilinear 보간 · 220</option>
+        </select>
+      </div>
+
+      <div class="print3dField">
+        <label>원본 모드 메시 상한</label>
         <select id="print3dDetail" onchange="updatePrint3dInfo()">
           <option value="120">빠름 · 최대 120×120</option>
           <option value="220" selected>표준 · 최대 220×220</option>
@@ -576,7 +585,8 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     <div id="print3dInfo" class="print3dInfo">DEM을 열고 출력 영역을 선택하세요.</div>
 
     <div class="print3dWarn">
-      STL 정밀도는 원본 DEM 해상도를 넘지 않습니다. 90 m DEM을 고해상도로 보간해도 실제 지형 정보가 더 정밀해지는 것은 아닙니다.
+      3D 출력용 Bilinear 보간은 각진 표면을 부드럽게 만드는 시각적 재표본화입니다.
+      보간 메시가 100×100 또는 220×220으로 늘어나도 실제 지형 정확도는 원본 DEM 해상도를 넘지 않습니다.
     </div>
 
     <div class="print3dActions">
@@ -5691,6 +5701,7 @@ function openPrint3dModal(){
     return;
   }
 
+  syncPrint3dInterpolationUi();
   updatePrint3dInfo();
   modal.style.display="flex";
 
@@ -5831,27 +5842,78 @@ function print3dWindowFromBounds(bounds){
   };
 }
 
+
+function getPrint3dInterpolationTarget(){
+  const value=String(
+    document.getElementById("print3dInterpolation")?.value||"none"
+  );
+
+  if(value==="100")return 100;
+  if(value==="220")return 220;
+  return 0;
+}
+
+function syncPrint3dInterpolationUi(){
+  const target=getPrint3dInterpolationTarget();
+  const detail=document.getElementById("print3dDetail");
+
+  if(detail){
+    detail.disabled=target>0;
+    detail.title=target>0
+      ?"보간 모드에서는 출력 메시 크기가 자동으로 정해집니다."
+      :"원본 DEM 모드에서 지나치게 큰 STL 생성을 막는 최대 메시 크기입니다.";
+  }
+}
+
+function print3dSurfaceModeLabel(plan){
+  if(!plan)return "-";
+
+  if(plan.interpolationTarget>0){
+    return `Bilinear 보간 · 긴 변 ${plan.interpolationTarget}`;
+  }
+
+  return "원본 DEM";
+}
+
 function print3dMeshPlan(){
   if(!print3dSelection||!demImage)return null;
 
   const win=print3dWindowFromBounds(print3dSelection);
   if(!win)return null;
 
-  const maxGrid=Math.max(
-    20,
-    Math.min(
-      400,
-      Number(document.getElementById("print3dDetail")?.value||220)
-    )
-  );
+  const interpolationTarget=getPrint3dInterpolationTarget();
 
-  const scale=Math.min(
-    1,
-    maxGrid/Math.max(win.width,win.height)
-  );
+  let cols=0;
+  let rows=0;
 
-  const cols=Math.max(2,Math.round(win.width*scale));
-  const rows=Math.max(2,Math.round(win.height*scale));
+  if(interpolationTarget>0){
+    // 출력용 보간:
+    // 원본 DEM cell 수보다 더 촘촘한 메시를 만들 수 있지만
+    // 실제 공간 정확도가 향상되는 것은 아니다.
+    const scale=
+      interpolationTarget/Math.max(win.width,win.height);
+
+    cols=Math.max(2,Math.round(win.width*scale));
+    rows=Math.max(2,Math.round(win.height*scale));
+  }else{
+    // 원본 DEM:
+    // 원본 grid 이상으로 늘리지 않고, 큰 선택 영역은 안전을 위해 상한만 적용.
+    const maxGrid=Math.max(
+      20,
+      Math.min(
+        400,
+        Number(document.getElementById("print3dDetail")?.value||220)
+      )
+    );
+
+    const scale=Math.min(
+      1,
+      maxGrid/Math.max(win.width,win.height)
+    );
+
+    cols=Math.max(2,Math.round(win.width*scale));
+    rows=Math.max(2,Math.round(win.height*scale));
+  }
 
   const dims=print3dGroundDimensions(print3dSelection);
 
@@ -5880,7 +5942,9 @@ function print3dMeshPlan(){
     dims,
     widthMm,
     modelHeightMm,
-    triangles
+    triangles,
+    interpolationTarget,
+    interpolated:interpolationTarget>0
   };
 }
 
@@ -5919,10 +5983,18 @@ function updatePrint3dInfo(){
       ?plan.dims.widthM*1000/plan.widthMm
       :0;
 
+  const sourceCells=plan.win.width*plan.win.height;
+  const outputCells=plan.cols*plan.rows;
+  const meshRatio=sourceCells>0
+    ?outputCells/sourceCells
+    :1;
+
   el.innerText=
     `실제 영역: ${plan.dims.widthM.toFixed(1)} × ${plan.dims.heightM.toFixed(1)} m\n`+
-    `DEM Window: ${plan.win.width} × ${plan.win.height} px\n`+
+    `원본 DEM Window: ${plan.win.width} × ${plan.win.height} px\n`+
+    `표면 방식: ${print3dSurfaceModeLabel(plan)}\n`+
     `STL 메시: ${plan.cols} × ${plan.rows} · 약 ${plan.triangles.toLocaleString()} triangles\n`+
+    `${plan.interpolated?`메시 점 수: 원본 대비 약 ${meshRatio.toFixed(1)}배 · 정확도 향상 아님\n`:""}`+
     `모형 크기: ${plan.widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} mm\n`+
     `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}\n`+
     `Z축 과장: ${zExag.toFixed(2)}× · 바닥: ${baseMm.toFixed(1)} mm`;
@@ -5960,6 +6032,9 @@ function print3dFiniteStats(values){
 }
 
 async function readPrint3dRaster(plan){
+  // GeoTIFF.js의 bilinear resampling 사용.
+  // 원본 모드에서는 같은 크기 또는 축소 재표본화,
+  // 출력용 보간 모드에서는 100/220 target mesh로 확대 재표본화한다.
   const result=await demImage.readRasters({
     samples:[0],
     window:[
@@ -6283,6 +6358,7 @@ async function exportPrint3dStl(){
         `모형: ${widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} × ${totalHeightMm.toFixed(1)} mm\n`+
         `고도: ${data.stats.min.toFixed(2)} ~ ${data.stats.max.toFixed(2)} m\n`+
         `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()} · Z축 ${zExag.toFixed(2)}×\n`+
+        `표면: ${print3dSurfaceModeLabel(plan)}${plan.interpolated?" · 시각적 보간":""}\n`+
         `메시: ${plan.cols} × ${plan.rows} · ${stl.triangleCount.toLocaleString()} triangles\n`+
         `구조: 상판·측면·격자 바닥 폐합형(manifold)\n`+
         `NoData 대체: ${data.stats.invalid.toLocaleString()} cells`;
@@ -6291,6 +6367,7 @@ async function exportPrint3dStl(){
     log.innerText=
       `3D 지형 STL 생성 완료\n`+
       `파일: ${fileName}\n`+
+      `표면: ${print3dSurfaceModeLabel(plan)}\n`+
       `메시: ${plan.cols} × ${plan.rows}\n`+
       `Triangles: ${stl.triangleCount.toLocaleString()}`;
   }catch(err){
@@ -6312,6 +6389,7 @@ function serializePrint3dProject(){
     widthMm:getPrint3dNumericValue("print3dWidthMm",180),
     baseMm:getPrint3dNumericValue("print3dBaseMm",5),
     zExag:getPrint3dNumericValue("print3dZExag",2),
+    interpolation:document.getElementById("print3dInterpolation")?.value||"none",
     detail:Number(document.getElementById("print3dDetail")?.value||220)
   };
 }
@@ -6327,7 +6405,9 @@ function restorePrint3dProject(saved){
   setValue("print3dWidthMm",saved.widthMm);
   setValue("print3dBaseMm",saved.baseMm);
   setValue("print3dZExag",saved.zExag);
+  setValue("print3dInterpolation",saved.interpolation||"none");
   setValue("print3dDetail",saved.detail);
+  syncPrint3dInterpolationUi();
 
   if(
     Array.isArray(saved.bounds)&&
@@ -6362,6 +6442,7 @@ window.startPrint3dAreaSelection=startPrint3dAreaSelection;
 window.clearPrint3dSelection=clearPrint3dSelection;
 window.exportPrint3dStl=exportPrint3dStl;
 window.updatePrint3dInfo=updatePrint3dInfo;
+window.syncPrint3dInterpolationUi=syncPrint3dInterpolationUi;
 
 
 function menuToggleOverlay(type){
