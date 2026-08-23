@@ -240,7 +240,8 @@ function createWindow(){
       {label:'3D 지형 모형 만들기',click(){runRenderer('openPrint3dModal()')}},
       {label:'지도에서 출력 영역 선택',click(){runRenderer('startPrint3dAreaSelection()')}},
       {type:'separator'},
-      {label:'STL 생성',click(){runRenderer('exportPrint3dStl()')}},
+      {label:'지형 STL만 생성',click(){runRenderer('exportPrint3dStl()')}},
+      {label:'STL + QR 세트 ZIP 생성',click(){runRenderer('exportPrint3dQrSet()')}},
       {label:'출력 영역 지우기',click(){runRenderer('clearPrint3dSelection()')}}
     ]},
 

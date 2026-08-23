@@ -226,6 +226,15 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 }
 .print3dWarn{margin-top:9px;font-size:11px;line-height:1.45;color:#9a3412}
 
+.print3dField.full{grid-column:1/-1}
+.print3dQrRow{
+  grid-column:1/-1;display:flex;align-items:center;gap:8px;
+  padding:9px 10px;border:1px solid #dbeafe;border-radius:9px;background:#eff6ff;
+  font-size:12px;font-weight:900;color:#1e3a8a
+}
+.print3dQrRow input{width:auto}
+
+
 </style>
 </head>
 <body>
@@ -580,6 +589,48 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
           <option value="320">정밀 · 최대 320×320</option>
         </select>
       </div>
+
+      <label class="print3dQrRow">
+        <input id="print3dQrEnabled" type="checkbox" checked onchange="updatePrint3dInfo()">
+        QR 스티커 세트 같이 만들기
+      </label>
+
+      <div class="print3dField full">
+        <label>QR 연결 주소 · 최대 106 UTF-8 bytes</label>
+        <input id="print3dQrLink" type="text" inputmode="url"
+          placeholder="https://..."
+          autocomplete="off" spellcheck="false"
+          oninput="updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>QR 트레이 크기 (mm)</label>
+        <input id="print3dQrPlateMm" type="text" inputmode="decimal" value="35"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,25,80,35,0);updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>QR 스티커 크기 (mm)</label>
+        <input id="print3dQrStickerMm" type="text" inputmode="decimal" value="30"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,15,75,30,0);updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>QR 홈 깊이 (mm)</label>
+        <input id="print3dQrRecessMm" type="text" inputmode="decimal" value="0.8"
+          autocomplete="off" spellcheck="false"
+          oninput="handlePrint3dNumericInput(this);updatePrint3dInfo()"
+          onblur="normalizePrint3dNumericInput(this,0.2,1.5,0.8,1);updatePrint3dInfo()">
+      </div>
+
+      <div class="print3dField">
+        <label>QR 트레이 두께</label>
+        <input type="text" value="2.0 mm · 고정" disabled>
+      </div>
     </div>
 
     <div id="print3dInfo" class="print3dInfo">DEM을 열고 출력 영역을 선택하세요.</div>
@@ -591,7 +642,8 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
     <div class="print3dActions">
       <button class="print3dBtn secondary" onclick="closePrint3dModal()">닫기</button>
-      <button class="print3dBtn" onclick="exportPrint3dStl()">STL 생성</button>
+      <button class="print3dBtn" onclick="exportPrint3dStl()">지형 STL만 생성</button>
+      <button class="print3dBtn full" onclick="exportPrint3dQrSet()">STL + QR 세트 ZIP 생성</button>
     </div>
   </div>
 </div>
@@ -5707,7 +5759,14 @@ function openPrint3dModal(){
 
   // 숫자 입력칸은 마우스로 눌렀을 때 기존 값 전체 선택.
   // 휠로 값이 바뀌는 오입력도 막음.
-  ["print3dWidthMm","print3dBaseMm","print3dZExag"].forEach(id=>{
+  [
+    "print3dWidthMm",
+    "print3dBaseMm",
+    "print3dZExag",
+    "print3dQrPlateMm",
+    "print3dQrStickerMm",
+    "print3dQrRecessMm"
+  ].forEach(id=>{
     const el=document.getElementById(id);
     if(!el||el.dataset.print3dInputBound==="1")return;
 
@@ -5997,7 +6056,10 @@ function updatePrint3dInfo(){
     `${plan.interpolated?`메시 점 수: 원본 대비 약 ${meshRatio.toFixed(1)}배 · 정확도 향상 아님\n`:""}`+
     `모형 크기: ${plan.widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} mm\n`+
     `수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}\n`+
-    `Z축 과장: ${zExag.toFixed(2)}× · 바닥: ${baseMm.toFixed(1)} mm`;
+    `Z축 과장: ${zExag.toFixed(2)}× · 바닥: ${baseMm.toFixed(1)} mm`+
+    (()=>{const qr=print3dQrSettings();return qr.enabled
+      ?`\nQR 세트: ${qr.plateSizeMm.toFixed(1)} mm 트레이 · ${qr.stickerSizeMm.toFixed(1)} mm 스티커 · 홈 ${qr.recessDepthMm.toFixed(1)} mm · 링크 ${qr.byteLength}/106 bytes`
+      :"\nQR 세트: 사용 안 함";})();
 }
 
 function print3dFiniteStats(values){
@@ -6378,6 +6440,655 @@ async function exportPrint3dStl(){
   }
 }
 
+
+function print3dQrAppendBits(value,length,out){
+  for(let i=length-1;i>=0;i--){
+    out.push(((value>>>i)&1)!==0);
+  }
+}
+
+function print3dQrMultiply(x,y){
+  let z=0;
+  for(let i=7;i>=0;i--){
+    z=(z<<1)^(((z>>>7)&1)*0x11D);
+    z^=((y>>>i)&1)*x;
+  }
+  return z&0xFF;
+}
+
+function print3dQrComputeDivisor(degree){
+  const result=new Uint8Array(degree);
+  result[degree-1]=1;
+  let root=1;
+
+  for(let i=0;i<degree;i++){
+    for(let j=0;j<degree;j++){
+      result[j]=print3dQrMultiply(result[j],root);
+      if(j+1<degree)result[j]^=result[j+1];
+    }
+    root=print3dQrMultiply(root,2);
+  }
+
+  return result;
+}
+
+function print3dQrComputeRemainder(data,divisor){
+  const result=new Uint8Array(divisor.length);
+
+  for(const byte of data){
+    const factor=byte^result[0];
+    result.copyWithin(0,1);
+    result[result.length-1]=0;
+
+    for(let i=0;i<result.length;i++){
+      result[i]^=print3dQrMultiply(divisor[i],factor);
+    }
+  }
+
+  return result;
+}
+
+function print3dQrEncodeModules(text){
+  const version=5;
+  const size=37;
+  const dataCodewords=108;
+  const eccCodewords=26;
+  const maxByteLength=106;
+  const bytes=new TextEncoder().encode(String(text||""));
+
+  if(!bytes.length){
+    throw new Error("QR 연결 주소를 입력해주세요.");
+  }
+
+  if(bytes.length>maxByteLength){
+    throw new Error(
+      `QR 링크가 너무 깁니다. 현재 ${bytes.length} bytes / 최대 ${maxByteLength} bytes입니다. 짧은 주소를 사용해주세요.`
+    );
+  }
+
+  const bits=[];
+  print3dQrAppendBits(0x4,4,bits); // byte mode
+  print3dQrAppendBits(bytes.length,8,bits);
+
+  for(const byte of bytes){
+    print3dQrAppendBits(byte,8,bits);
+  }
+
+  const capacityBits=dataCodewords*8;
+  const terminator=Math.min(4,capacityBits-bits.length);
+
+  for(let i=0;i<terminator;i++)bits.push(false);
+  while(bits.length%8!==0)bits.push(false);
+
+  const data=[];
+  for(let i=0;i<bits.length;i+=8){
+    let value=0;
+    for(let j=0;j<8;j++){
+      value=(value<<1)|(bits[i+j]?1:0);
+    }
+    data.push(value);
+  }
+
+  for(let pad=0;data.length<dataCodewords;pad++){
+    data.push(pad%2===0?0xEC:0x11);
+  }
+
+  const divisor=print3dQrComputeDivisor(eccCodewords);
+  const ecc=print3dQrComputeRemainder(Uint8Array.from(data),divisor);
+  const codewords=Uint8Array.from([...data,...ecc]);
+  const rawBits=[];
+
+  for(const byte of codewords){
+    print3dQrAppendBits(byte,8,rawBits);
+  }
+
+  const modules=Array.from({length:size},()=>Array(size).fill(false));
+  const isFunction=Array.from({length:size},()=>Array(size).fill(false));
+
+  const setFunction=(x,y,dark)=>{
+    if(x<0||y<0||x>=size||y>=size)return;
+    modules[y][x]=!!dark;
+    isFunction[y][x]=true;
+  };
+
+  const drawFinder=(cx,cy)=>{
+    for(let dy=-4;dy<=4;dy++){
+      for(let dx=-4;dx<=4;dx++){
+        const x=cx+dx;
+        const y=cy+dy;
+        if(x<0||y<0||x>=size||y>=size)continue;
+        const dist=Math.max(Math.abs(dx),Math.abs(dy));
+        setFunction(x,y,dist!==2&&dist!==4);
+      }
+    }
+  };
+
+  const drawAlignment=(cx,cy)=>{
+    for(let dy=-2;dy<=2;dy++){
+      for(let dx=-2;dx<=2;dx++){
+        setFunction(
+          cx+dx,
+          cy+dy,
+          Math.max(Math.abs(dx),Math.abs(dy))!==1
+        );
+      }
+    }
+  };
+
+  const drawFormatBits=(mask)=>{
+    // Error correction L = 01
+    const dataValue=(1<<3)|mask;
+    let rem=dataValue;
+
+    for(let i=0;i<10;i++){
+      rem=(rem<<1)^(((rem>>>9)&1)*0x537);
+    }
+
+    const value=((dataValue<<10)|rem)^0x5412;
+    const bit=i=>((value>>>i)&1)!==0;
+
+    for(let i=0;i<=5;i++)setFunction(8,i,bit(i));
+    setFunction(8,7,bit(6));
+    setFunction(8,8,bit(7));
+    setFunction(7,8,bit(8));
+
+    for(let i=9;i<15;i++)setFunction(14-i,8,bit(i));
+    for(let i=0;i<8;i++)setFunction(size-1-i,8,bit(i));
+    for(let i=8;i<15;i++)setFunction(8,size-15+i,bit(i));
+
+    setFunction(8,size-8,true);
+  };
+
+  for(let i=8;i<size-8;i++){
+    setFunction(i,6,i%2===0);
+    setFunction(6,i,i%2===0);
+  }
+
+  drawFinder(3,3);
+  drawFinder(size-4,3);
+  drawFinder(3,size-4);
+  drawAlignment(30,30);
+
+  // Mask pattern 0
+  drawFormatBits(0);
+
+  let bitIndex=0;
+  let upward=true;
+
+  for(let right=size-1;right>=1;right-=2){
+    if(right===6)right--;
+
+    for(let vert=0;vert<size;vert++){
+      const y=upward?size-1-vert:vert;
+
+      for(let j=0;j<2;j++){
+        const x=right-j;
+        if(isFunction[y][x])continue;
+
+        let dark=bitIndex<rawBits.length?rawBits[bitIndex]:false;
+        bitIndex++;
+
+        if(((x+y)&1)===0)dark=!dark;
+        modules[y][x]=dark;
+      }
+    }
+
+    upward=!upward;
+  }
+
+  drawFormatBits(0);
+
+  return {
+    version,
+    size,
+    modules,
+    byteLength:bytes.length,
+    maxByteLength
+  };
+}
+
+async function print3dQrPngBytes(text){
+  const qr=print3dQrEncodeModules(text);
+  const quiet=4;
+  const scale=20;
+  const total=qr.size+quiet*2;
+
+  const canvas=document.createElement("canvas");
+  canvas.width=total*scale;
+  canvas.height=total*scale;
+
+  const ctx=canvas.getContext("2d");
+  if(!ctx)throw new Error("QR PNG Canvas를 만들지 못했습니다.");
+
+  ctx.imageSmoothingEnabled=false;
+  ctx.fillStyle="#ffffff";
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#000000";
+
+  for(let y=0;y<qr.size;y++){
+    for(let x=0;x<qr.size;x++){
+      if(!qr.modules[y][x])continue;
+      ctx.fillRect(
+        (x+quiet)*scale,
+        (y+quiet)*scale,
+        scale,
+        scale
+      );
+    }
+  }
+
+  const blob=await new Promise((resolve,reject)=>{
+    canvas.toBlob(
+      value=>value
+        ?resolve(value)
+        :reject(new Error("QR PNG 변환에 실패했습니다.")),
+      "image/png"
+    );
+  });
+
+  return {
+    bytes:new Uint8Array(await blob.arrayBuffer()),
+    pixelSize:canvas.width,
+    moduleCount:total,
+    qr
+  };
+}
+
+function print3dAddQuadTriangles(list,a,b,c,d){
+  list.push([a,b,c],[a,c,d]);
+}
+
+function buildPrint3dQrTrayStl(options={}){
+  const plateSize=Number(options.plateSizeMm);
+  const stickerSize=Number(options.stickerSizeMm);
+  const thickness=2;
+  const recessDepth=Number(options.recessDepthMm);
+
+  if(
+    !Number.isFinite(plateSize)||
+    !Number.isFinite(stickerSize)||
+    !Number.isFinite(recessDepth)||
+    plateSize<25||
+    plateSize>80||
+    stickerSize<15||
+    stickerSize>=plateSize-2||
+    recessDepth<0.2||
+    recessDepth>1.5||
+    recessDepth>=thickness
+  ){
+    throw new Error("QR 트레이 크기/스티커 크기/홈 깊이 설정을 확인해주세요.");
+  }
+
+  const margin=(plateSize-stickerSize)/2;
+  const topZ=thickness;
+  const floorZ=topZ-recessDepth;
+  const xs=[0,margin,plateSize-margin,plateSize];
+  const ys=[0,margin,plateSize-margin,plateSize];
+  const triangles=[];
+  const quad=(a,b,c,d)=>print3dAddQuadTriangles(triangles,a,b,c,d);
+
+  // top ring
+  for(let iy=0;iy<3;iy++){
+    for(let ix=0;ix<3;ix++){
+      if(ix===1&&iy===1)continue;
+      const x0=xs[ix],x1=xs[ix+1],y0=ys[iy],y1=ys[iy+1];
+      quad(
+        [x0,y0,topZ],
+        [x1,y0,topZ],
+        [x1,y1,topZ],
+        [x0,y1,topZ]
+      );
+    }
+  }
+
+  // recess floor
+  quad(
+    [xs[1],ys[1],floorZ],
+    [xs[2],ys[1],floorZ],
+    [xs[2],ys[2],floorZ],
+    [xs[1],ys[2],floorZ]
+  );
+
+  // inner recess walls
+  quad(
+    [xs[1],ys[1],floorZ],
+    [xs[1],ys[1],topZ],
+    [xs[2],ys[1],topZ],
+    [xs[2],ys[1],floorZ]
+  );
+  quad(
+    [xs[1],ys[2],floorZ],
+    [xs[2],ys[2],floorZ],
+    [xs[2],ys[2],topZ],
+    [xs[1],ys[2],topZ]
+  );
+  quad(
+    [xs[1],ys[1],floorZ],
+    [xs[1],ys[2],floorZ],
+    [xs[1],ys[2],topZ],
+    [xs[1],ys[1],topZ]
+  );
+  quad(
+    [xs[2],ys[1],floorZ],
+    [xs[2],ys[1],topZ],
+    [xs[2],ys[2],topZ],
+    [xs[2],ys[2],floorZ]
+  );
+
+  // outer walls, segmented to match top/bottom vertices
+  for(let i=0;i<3;i++){
+    const x0=xs[i],x1=xs[i+1];
+
+    quad(
+      [x0,0,0],
+      [x1,0,0],
+      [x1,0,topZ],
+      [x0,0,topZ]
+    );
+
+    quad(
+      [x0,plateSize,0],
+      [x0,plateSize,topZ],
+      [x1,plateSize,topZ],
+      [x1,plateSize,0]
+    );
+  }
+
+  for(let i=0;i<3;i++){
+    const y0=ys[i],y1=ys[i+1];
+
+    quad(
+      [0,y0,0],
+      [0,y0,topZ],
+      [0,y1,topZ],
+      [0,y1,0]
+    );
+
+    quad(
+      [plateSize,y0,0],
+      [plateSize,y1,0],
+      [plateSize,y1,topZ],
+      [plateSize,y0,topZ]
+    );
+  }
+
+  // bottom grid, normal -Z
+  for(let iy=0;iy<3;iy++){
+    for(let ix=0;ix<3;ix++){
+      const x0=xs[ix],x1=xs[ix+1],y0=ys[iy],y1=ys[iy+1];
+
+      quad(
+        [x0,y0,0],
+        [x0,y1,0],
+        [x1,y1,0],
+        [x1,y0,0]
+      );
+    }
+  }
+
+  const triangleCount=triangles.length;
+  const buffer=new ArrayBuffer(84+triangleCount*50);
+  const view=new DataView(buffer);
+  const header="RiverDEM QR sticker tray STL";
+
+  for(let i=0;i<80;i++){
+    view.setUint8(i,i<header.length?header.charCodeAt(i):0);
+  }
+
+  view.setUint32(80,triangleCount,true);
+
+  let offset=84;
+
+  for(const tri of triangles){
+    offset=writePrint3dTriangle(
+      view,
+      offset,
+      tri[0],
+      tri[1],
+      tri[2]
+    );
+  }
+
+  if(offset!==buffer.byteLength){
+    throw new Error("QR 트레이 STL 바이너리 크기가 일치하지 않습니다.");
+  }
+
+  return {
+    buffer,
+    triangleCount,
+    plateSize,
+    stickerSize,
+    recessDepth,
+    thickness
+  };
+}
+
+function print3dDownloadBytes(bytes,fileName,mimeType){
+  const blob=new Blob(
+    [bytes],
+    {type:mimeType||"application/octet-stream"}
+  );
+
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+
+  a.href=url;
+  a.download=fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function print3dQrSettings(){
+  const enabled=
+    document.getElementById("print3dQrEnabled")?.checked!==false;
+
+  const link=String(
+    document.getElementById("print3dQrLink")?.value||""
+  ).trim();
+
+  const plateSizeMm=getPrint3dNumericValue("print3dQrPlateMm",35);
+  const stickerSizeMm=getPrint3dNumericValue("print3dQrStickerMm",30);
+  const recessDepthMm=getPrint3dNumericValue("print3dQrRecessMm",0.8);
+  const byteLength=new TextEncoder().encode(link).length;
+
+  return {
+    enabled,
+    link,
+    plateSizeMm,
+    stickerSizeMm,
+    recessDepthMm,
+    byteLength
+  };
+}
+
+async function exportPrint3dQrSet(){
+  if(print3dBusy)return;
+
+  if(!demImage){
+    alert("DEM을 먼저 열어주세요.");
+    return;
+  }
+
+  if(!print3dSelection){
+    alert("먼저 3D 출력 영역을 선택해주세요.");
+    return;
+  }
+
+  const qrSettings=print3dQrSettings();
+
+  if(!qrSettings.enabled){
+    alert("QR 스티커 세트 옵션을 켜주세요.");
+    return;
+  }
+
+  if(!qrSettings.link){
+    alert("QR 연결 주소를 입력해주세요.");
+    return;
+  }
+
+  if(qrSettings.byteLength>106){
+    alert(
+      `QR 링크가 너무 깁니다. 현재 ${qrSettings.byteLength} bytes / 최대 106 bytes입니다. 짧은 주소를 사용해주세요.`
+    );
+    return;
+  }
+
+  if(!/^https?:\/\//i.test(qrSettings.link)){
+    alert("QR 연결 주소는 http:// 또는 https://로 시작해주세요.");
+    return;
+  }
+
+  const plan=print3dMeshPlan();
+  if(!plan){
+    alert("선택 영역이 너무 작거나 DEM 범위 밖입니다.");
+    return;
+  }
+
+  const widthMm=getPrint3dNumericValue("print3dWidthMm",180);
+  const baseMm=getPrint3dNumericValue("print3dBaseMm",5);
+  const zExag=getPrint3dNumericValue("print3dZExag",2);
+
+  if(!Number.isFinite(widthMm)||widthMm<20||widthMm>500){
+    alert("모형 가로 크기는 20~500 mm 범위로 입력해주세요.");
+    return;
+  }
+
+  if(!Number.isFinite(baseMm)||baseMm<1||baseMm>50){
+    alert("바닥 두께는 1~50 mm 범위로 입력해주세요.");
+    return;
+  }
+
+  if(!Number.isFinite(zExag)||zExag<=0||zExag>20){
+    alert("Z축 과장 배율은 0 초과 20 이하로 입력해주세요.");
+    return;
+  }
+
+  print3dBusy=true;
+
+  const info=document.getElementById("print3dInfo");
+
+  try{
+    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n1/4 DEM 읽기";
+
+    const data=await readPrint3dRaster(plan);
+    const scaleMmPerMeter=plan.dims.widthM>0?widthMm/plan.dims.widthM:0;
+
+    if(!Number.isFinite(scaleMmPerMeter)||scaleMmPerMeter<=0){
+      throw new Error("3D 모형 축척을 계산하지 못했습니다.");
+    }
+
+    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n2/4 지형 STL 생성";
+    await new Promise(resolve=>setTimeout(resolve,0));
+
+    const terrain=buildBinaryTerrainStl(
+      data.heights,
+      plan.cols,
+      plan.rows,
+      {
+        widthMm,
+        heightMm:plan.modelHeightMm,
+        baseMm,
+        minZ:data.stats.min,
+        scaleMmPerMeter,
+        zExag
+      }
+    );
+
+    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n3/4 QR PNG · 스티커 트레이 생성";
+
+    const qrPng=await print3dQrPngBytes(qrSettings.link);
+    const qrTray=buildPrint3dQrTrayStl({
+      plateSizeMm:qrSettings.plateSizeMm,
+      stickerSizeMm:qrSettings.stickerSizeMm,
+      recessDepthMm:qrSettings.recessDepthMm
+    });
+
+    if(info)info.innerText="3D 출력 세트를 만드는 중입니다...\n4/4 ZIP 묶기";
+
+    const river=currentRiverName()==="미선택"?"RiverDEM":currentRiverName();
+    const demBase=String(currentDemName()||"DEM").replace(/\.[^.]+$/,"");
+    const baseName=projectFileSafeName(`${river}_${demBase}_3Dset`);
+    const terrainName=projectFileSafeName(`${river}_${demBase}_terrain`)+".stl";
+    const qrPlateName=projectFileSafeName(`${river}_${demBase}_QR_tray`)+".stl";
+    const qrPngName=projectFileSafeName(`${river}_${demBase}_QR`)+".png";
+    const readmeName="README_RiverDEM_3D.txt";
+
+    const scaleDenom=plan.dims.widthM*1000/widthMm;
+    const reliefMm=(data.stats.max-data.stats.min)*scaleMmPerMeter*zExag;
+    const totalHeightMm=baseMm+reliefMm;
+
+    const readme=
+`RiverDEM 3D 출력 세트
+
+[지형 STL]
+파일: ${terrainName}
+실제 영역: ${plan.dims.widthM.toFixed(1)} × ${plan.dims.heightM.toFixed(1)} m
+모형 크기: ${widthMm.toFixed(1)} × ${plan.modelHeightMm.toFixed(1)} × ${totalHeightMm.toFixed(1)} mm
+수평 축척: 약 1:${Math.round(scaleDenom).toLocaleString()}
+Z축 과장: ${zExag.toFixed(2)}×
+표면: ${print3dSurfaceModeLabel(plan)}
+메시: ${plan.cols} × ${plan.rows}
+Triangles: ${terrain.triangleCount.toLocaleString()}
+
+[QR 스티커]
+파일: ${qrPngName}
+연결 주소: ${qrSettings.link}
+QR: Version 5-L · 37×37 modules
+PNG: ${qrPng.pixelSize} × ${qrPng.pixelSize} px
+Quiet zone 포함: ${qrPng.moduleCount} × ${qrPng.moduleCount} modules
+권장 인쇄 크기: ${qrSettings.stickerSizeMm.toFixed(1)} × ${qrSettings.stickerSizeMm.toFixed(1)} mm
+주의: QR PNG의 흰색 바깥 여백(quiet zone)을 자르지 마세요.
+
+[QR 스티커 트레이 STL]
+파일: ${qrPlateName}
+트레이: ${qrSettings.plateSizeMm.toFixed(1)} × ${qrSettings.plateSizeMm.toFixed(1)} × ${qrTray.thickness.toFixed(1)} mm
+스티커 자리: ${qrSettings.stickerSizeMm.toFixed(1)} × ${qrSettings.stickerSizeMm.toFixed(1)} mm
+홈 깊이: ${qrSettings.recessDepthMm.toFixed(1)} mm
+Triangles: ${qrTray.triangleCount}
+
+현재 QR 트레이는 지형 STL과 별도 부품입니다.
+OrcaSlicer에서 두 STL을 함께 배치해 출력한 뒤 트레이를 지형 모형 옆/하단에 부착하는 방식입니다.
+`;
+
+    const zipBytes=excelZipStore([
+      {name:terrainName,data:new Uint8Array(terrain.buffer)},
+      {name:qrPlateName,data:new Uint8Array(qrTray.buffer)},
+      {name:qrPngName,data:qrPng.bytes},
+      {name:readmeName,data:readme}
+    ]);
+
+    const zipName=baseName+".zip";
+
+    print3dDownloadBytes(zipBytes,zipName,"application/zip");
+
+    if(info){
+      info.innerText=
+        `3D 출력 세트 생성 완료: ${zipName}\n`+
+        `지형 STL: ${terrain.triangleCount.toLocaleString()} triangles\n`+
+        `QR: ${qrSettings.byteLength}/106 bytes · ${qrPng.pixelSize}px PNG\n`+
+        `QR 트레이: ${qrSettings.plateSizeMm.toFixed(1)} mm · 홈 ${qrSettings.recessDepthMm.toFixed(1)} mm\n`+
+        `ZIP 안에 STL 2개 + QR PNG + README가 들어 있습니다.`;
+    }
+
+    log.innerText=
+      `3D 출력 세트 ZIP 생성 완료\n`+
+      `파일: ${zipName}\n`+
+      `지형: ${plan.cols} × ${plan.rows}\n`+
+      `QR 링크: ${qrSettings.link}`;
+  }catch(err){
+    if(info){
+      info.innerText="3D 출력 세트 생성 실패: "+(err?.message||String(err));
+    }
+    alert("3D 출력 세트 생성 실패: "+(err?.message||String(err)));
+  }finally{
+    print3dBusy=false;
+  }
+}
+
+
 function serializePrint3dProject(){
   return {
     bounds:print3dSelection
@@ -6390,7 +7101,14 @@ function serializePrint3dProject(){
     baseMm:getPrint3dNumericValue("print3dBaseMm",5),
     zExag:getPrint3dNumericValue("print3dZExag",2),
     interpolation:document.getElementById("print3dInterpolation")?.value||"none",
-    detail:Number(document.getElementById("print3dDetail")?.value||220)
+    detail:Number(document.getElementById("print3dDetail")?.value||220),
+    qr:{
+      enabled:document.getElementById("print3dQrEnabled")?.checked!==false,
+      link:String(document.getElementById("print3dQrLink")?.value||""),
+      plateSizeMm:getPrint3dNumericValue("print3dQrPlateMm",35),
+      stickerSizeMm:getPrint3dNumericValue("print3dQrStickerMm",30),
+      recessDepthMm:getPrint3dNumericValue("print3dQrRecessMm",0.8)
+    }
   };
 }
 
@@ -6407,6 +7125,16 @@ function restorePrint3dProject(saved){
   setValue("print3dZExag",saved.zExag);
   setValue("print3dInterpolation",saved.interpolation||"none");
   setValue("print3dDetail",saved.detail);
+
+  const qr=saved.qr||{};
+  const qrEnabled=document.getElementById("print3dQrEnabled");
+  if(qrEnabled)qrEnabled.checked=qr.enabled!==false;
+
+  setValue("print3dQrLink",qr.link||"");
+  setValue("print3dQrPlateMm",qr.plateSizeMm??35);
+  setValue("print3dQrStickerMm",qr.stickerSizeMm??30);
+  setValue("print3dQrRecessMm",qr.recessDepthMm??0.8);
+
   syncPrint3dInterpolationUi();
 
   if(
@@ -6441,6 +7169,7 @@ window.closePrint3dModal=closePrint3dModal;
 window.startPrint3dAreaSelection=startPrint3dAreaSelection;
 window.clearPrint3dSelection=clearPrint3dSelection;
 window.exportPrint3dStl=exportPrint3dStl;
+window.exportPrint3dQrSet=exportPrint3dQrSet;
 window.updatePrint3dInfo=updatePrint3dInfo;
 window.syncPrint3dInterpolationUi=syncPrint3dInterpolationUi;
 
