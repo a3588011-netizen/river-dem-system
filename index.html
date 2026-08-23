@@ -93,6 +93,33 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .validationItem.excluded{color:#64748b}
 .validationItem button{float:right;border:0;border-radius:6px;padding:3px 7px;background:#e5e7eb;color:#374151;font-weight:900;cursor:pointer}
 
+
+.validationModeStatus{
+  margin-top:8px;padding:10px;border-radius:8px;font-size:12px;font-weight:900;
+  line-height:1.5;background:#e0f2fe;color:#075985
+}
+.validationModeStatus.real{background:#eef2ff;color:#3730a3}
+.validationModeStatus.warn{background:#fff7ed;color:#9a3412}
+.validationHidden{display:none!important}
+
+
+.riverSearchMeta{display:flex;gap:6px;align-items:center;margin:7px 0 4px}
+.favoriteFilterBtn{flex:1;border:1px solid #d7dee8;background:#fff;color:#334155;border-radius:8px;padding:7px 8px;font-size:12px;font-weight:900;cursor:pointer}
+.favoriteFilterBtn.on{background:#fff7d6;border-color:#eab308;color:#854d0e}
+.searchState{font-size:10px;color:#64748b;margin:3px 1px 7px;line-height:1.4}
+.river .riverName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.river .favStar{width:25px;height:25px;border:0;background:transparent;color:#94a3b8;font-size:18px;line-height:25px;cursor:pointer;padding:0;border-radius:6px}
+.river .favStar:hover{background:#fef3c7;color:#ca8a04}
+.river .favStar.on{color:#eab308}
+.riverSource{font-size:9px;color:#64748b;margin-left:5px;font-weight:700}
+
+
+.officialDbBadge{margin:5px 0 7px;padding:7px 8px;border:1px solid #dbeafe;background:#eff6ff;border-radius:8px;font-size:10px;color:#1e40af;font-weight:800;line-height:1.45}
+.riverText{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.riverText .riverName{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:800}
+.riverMeta{font-size:9px;line-height:1.35;color:#64748b;font-weight:700;white-space:normal}
+.river.active .riverMeta{color:#1d4ed8}
+
 </style>
 </head>
 <body>
@@ -103,7 +130,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
   <button class="collapseBtn" onclick="toggleLeft()">‹</button>
   <div class="head">지역 / 하천 선택</div>
   <div class="body">
-    <select id="regionFilter" onchange="renderRivers()">
+    <select id="regionFilter" onchange="handleRiverSearchInput()">
       <option value="전체">전체</option>
       <option value="서울/수도권">서울/수도권</option>
       <option value="강원">강원</option>
@@ -116,7 +143,12 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <option value="제주">제주</option>
       <option value="전국 주요">전국 주요</option>
     </select>
-    <input class="search" id="search" placeholder="하천 검색..." oninput="renderRivers()">
+    <input class="search" id="search" placeholder="전국 하천 이름 검색..." oninput="handleRiverSearchInput()" onkeydown="handleRiverSearchKey(event)">
+    <div class="riverSearchMeta">
+      <button id="favoriteFilterBtn" class="favoriteFilterBtn" onclick="toggleFavoriteFilter()">☆ 즐겨찾기만 보기</button>
+    </div>
+    <div id="riverSearchState" class="searchState">공식 하천 DB에서 이름을 검색합니다.</div>
+    <div id="officialDbBadge" class="officialDbBadge">공식 하천 DB 불러오는 중...</div>
     <div id="riverList"></div>
     <button class="apply" onclick="applySelectedRiver()">선택 하천으로 이동</button>
   </div>
@@ -175,27 +207,43 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
     </div>
 
     <hr>
-    <div class="label">현실 대조 / DEM 검증</div>
+    <div class="label">하천 DEM 검증</div>
     <div class="validationBox">
       <div class="help">
-        검증 지점을 지도에서 클릭한 뒤 실제 측량 고도를 입력합니다.
-        지면 계열만 공식 정확도 판정에 포함하며 수면·교량·식생은 별도 기록합니다.
+        국토정보플랫폼 등 공식 DEM을 기준으로 먼저 지형·고도 분석을 진행합니다.
+        GNSS·수준측량·기준점 등 독립 실측값이 준비되면 독립 실측 검증으로 전환합니다.
       </div>
 
       <div id="validationTarget" class="validationTarget">대상: 하천 미선택 / DEM 미선택</div>
 
-      <select id="validationStandard">
-        <option value="1">1 m × 1 m DEM 기준</option>
-        <option value="5">5 m × 5 m DEM 기준</option>
+      <select id="validationMode">
+        <option value="simulation" selected>공식 DEM 기반 분석</option>
+        <option value="real">독립 실측 검증</option>
       </select>
-      <div class="help">1 m: RMSE ≤ 0.50 m / 최대오차 ≤ 0.75 m · 5 m: RMSE ≤ 1.00 m / 최대오차 ≤ 2.00 m · 도엽당 검사점 5점</div>
+
+      <div id="validationModeStatus" class="validationModeStatus">
+        공식 DEM 기반 분석 · 독립 실측 기준점 미등록 · 정확도 판정 보류
+      </div>
+
+      <div id="realValidationControls" class="validationHidden">
+        <select id="validationStandard">
+          <option value="1">1 m × 1 m DEM 기준</option>
+          <option value="5">5 m × 5 m DEM 기준</option>
+          <option value="other">기타 해상도 - 공식 판정 적용 불가</option>
+        </select>
+        <div class="help">
+          1 m: RMSE ≤ 0.50 m / 최대오차 ≤ 0.75 m ·
+          5 m: RMSE ≤ 1.00 m / 최대오차 ≤ 2.00 m ·
+          도엽당 검사점 5점
+        </div>
+      </div>
 
       <select id="validationType">
-        <option value="ground">지면 / 제방 / 도로 / 둔치 (판정 포함)</option>
-        <option value="water">수면 (별도 기록)</option>
-        <option value="bridge">교량 (판정 제외)</option>
-        <option value="vegetation">식생 (판정 제외)</option>
-        <option value="other">기타 (별도 기록)</option>
+        <option value="ground">지면 / 제방 / 도로 / 둔치</option>
+        <option value="water">수면</option>
+        <option value="bridge">교량</option>
+        <option value="vegetation">식생</option>
+        <option value="other">기타</option>
       </select>
 
       <select id="validationSampleMode">
@@ -203,11 +251,11 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
         <option value="avg3">3×3 평균값 사용</option>
       </select>
 
-      <input id="validationReferenceZ" type="number" step="0.001" placeholder="실제 측량 고도 (m)">
+      <input id="validationReferenceZ" class="validationHidden" type="number" step="0.001" placeholder="실제 측량 고도 (m)">
       <input id="validationNote" type="text" placeholder="메모 (선택)">
 
       <div class="validationActions">
-        <button class="validationBtn" onclick="addValidationPoint()">현재 지점 추가</button>
+        <button id="validationAddBtn" class="validationBtn" onclick="addValidationPoint()">현재 지점 기록</button>
         <button class="validationBtn secondary" onclick="exportValidationCsv()">CSV 내보내기</button>
       </div>
       <div class="validationActions">
@@ -215,13 +263,15 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       </div>
 
       <div class="validationStats">
-        <div>판정 포함 지점</div><div id="validationCount">0 / 5</div>
+        <div id="validationCountLabel">시뮬레이션 기록</div><div id="validationCount">0</div>
         <div>평균 편차</div><div id="validationBias">-</div>
         <div>RMSE</div><div id="validationRmse">-</div>
         <div>최대 절대오차</div><div id="validationMax">-</div>
       </div>
 
-      <div id="validationJudge" class="validationJudge wait">도엽당 5점 이상 확보 후 판정합니다.</div>
+      <div id="validationJudge" class="validationJudge wait">
+        공식 DEM 기반 분석 단계입니다. 독립 실측값이 없어 정확도 판정은 보류됩니다.
+      </div>
       <div id="validationList" class="validationList"></div>
     </div>
   </div>
@@ -254,6 +304,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/geotiff@2.1.3/dist-browser/geotiff.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.11.0/proj4.js"></script>
+<script src="./river_catalog.js"></script>
 <script>
 proj4.defs("EPSG:5179","+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs");
 
@@ -278,6 +329,14 @@ let validationRecords=[];
 let validationLayer=null;
 let heatRenderToken=0;
 const VALIDATION_STORAGE_KEY="riverdem_validation_records_v1";
+const RIVER_FAVORITES_KEY="riverdem_favorite_rivers_v1";
+const RIVER_COORD_CACHE_KEY="riverdem_river_coord_cache_v1";
+let favoriteRivers=[];
+let favoriteOnly=false;
+let onlineRiverResults=[];
+let riverSearchTimer=null;
+let riverSearchSerial=0;
+let riverCoordCache={};
 
 function initMap(){
   map=L.map("map",{zoomControl:false}).setView([35.186645,127.622747],9);
@@ -291,9 +350,12 @@ function initMap(){
   map.on("click",e=>samplePoint(e.latlng.lat,e.latlng.lng));
   validationLayer=L.layerGroup().addTo(map);
   loadValidationRecords();
+  loadFavoriteRivers();
+  loadRiverCoordCache();
+  updateOfficialDbBadge();
   renderRivers();
   updateValidationTarget();
-  updateValidationStats();
+  updateValidationModeUi();
   renderValidationList();
   renderValidationMarkers();
 }
@@ -376,32 +438,328 @@ function updateStatus(latlng){
   statusY.innerText="Y: "+Number(y).toFixed(6);
   statusZoom.innerText="레벨: "+map.getZoom();
 }
-function renderRivers(){
-  const q=(search.value||"").trim();
-  const filter=regionFilter.value;
-  riverList.innerHTML="";
+function riverMeta(r){
+  const m=r?.[5];
+  return m&&typeof m==="object"?m:{};
+}
+function riverSourceType(r){return riverMeta(r).source||"builtIn"}
+function riverCode(r){return String(riverMeta(r).code||"")}
+function riverRegion(r){return String(riverMeta(r).region||r?.[4]||"")}
+function riverBasin(r){return String(riverMeta(r).basin||"")}
+function riverGrade(r){return String(riverMeta(r).grade||"")}
+function riverCity(r){return String(riverMeta(r).city||"")}
+
+function riverKey(r){
+  const code=riverCode(r);
+  if(code)return "code:"+code;
+  const name=String(r?.[0]||"").trim();
+  const lat=Number(r?.[1]);
+  const lon=Number(r?.[2]);
+  if(Number.isFinite(lat)&&Number.isFinite(lon))return `${name}|${lat.toFixed(6)}|${lon.toFixed(6)}`;
+  return `${name}|${riverRegion(r)}`;
+}
+
+function officialCatalog(){return Array.isArray(window.RIVER_CATALOG)?window.RIVER_CATALOG:[]}
+function updateOfficialDbBadge(){
+  const el=document.getElementById("officialDbBadge");
+  if(!el)return;
+  const m=window.RIVER_CATALOG_META;
+  const rows=officialCatalog();
+  if(!rows.length){
+    el.innerText="공식 하천 DB를 찾지 못했습니다. river_catalog.js를 index.html과 같은 위치에 두세요.";
+    return;
+  }
+  el.innerText=`공식 한국하천일람 · ${m?.asOf||"2024-12-31"} 기준 · 하천 ${Number(m?.riverCount||3841).toLocaleString()}개 · 코드 ${rows.length.toLocaleString()}건`;
+}
+
+function catalogToRiver(rec){
+  return [rec.name,null,null,14,rec.region,{source:"official",code:rec.code,grade:rec.grade,basin:rec.basin,region:rec.region,city:rec.city||""}];
+}
+
+function loadFavoriteRivers(){
+  try{
+    const raw=localStorage.getItem(RIVER_FAVORITES_KEY);
+    const data=raw?JSON.parse(raw):[];
+    favoriteRivers=Array.isArray(data)?data.filter(r=>Array.isArray(r)&&r[0]):[];
+  }catch(e){favoriteRivers=[]}
+  updateFavoriteButton();
+}
+function saveFavoriteRivers(){
+  try{localStorage.setItem(RIVER_FAVORITES_KEY,JSON.stringify(favoriteRivers))}catch(e){}
+  updateFavoriteButton();
+}
+function isFavoriteRiver(r){const key=riverKey(r);return favoriteRivers.some(x=>riverKey(x)===key)}
+function toggleFavoriteRiver(r,group){
+  const key=riverKey(r);
+  const idx=favoriteRivers.findIndex(x=>riverKey(x)===key);
+  if(idx>=0)favoriteRivers.splice(idx,1);
+  else favoriteRivers.push(JSON.parse(JSON.stringify(r)));
+  saveFavoriteRivers();
+  renderRivers();
+}
+function toggleFavoriteFilter(){favoriteOnly=!favoriteOnly;updateFavoriteButton();renderRivers()}
+function updateFavoriteButton(){
+  const btn=document.getElementById("favoriteFilterBtn");if(!btn)return;
+  btn.classList.toggle("on",favoriteOnly);
+  btn.innerText=favoriteOnly?`★ 즐겨찾기 ${favoriteRivers.length}개 표시 중`:`☆ 즐겨찾기만 보기 (${favoriteRivers.length})`;
+}
+
+function loadRiverCoordCache(){
+  try{riverCoordCache=JSON.parse(localStorage.getItem(RIVER_COORD_CACHE_KEY)||"{}")||{}}catch(e){riverCoordCache={}}
+}
+function saveRiverCoordCache(){try{localStorage.setItem(RIVER_COORD_CACHE_KEY,JSON.stringify(riverCoordCache))}catch(e){}}
+
+function normalizeSearchText(v){return String(v||"").replace(/\s+/g,"").replaceAll("/","").toLowerCase()}
+
+const OFFICIAL_REGION_FILTERS={
+  "서울/수도권":["서울","인천","경기"],
+  "강원":["강원"],
+  "충북":["충북"],
+  "충남/대전":["충남","대전","세종"],
+  "전북":["전북"],
+  "전남/광주":["전남","광주"],
+  "경북":["경북","대구"],
+  "경남/부산/울산":["경남","부산","울산"],
+  "제주":["제주"]
+};
+function officialRegionAllowed(region,filter){
+  if(filter==="전체"||filter==="전국 주요")return true;
+  return (OFFICIAL_REGION_FILTERS[filter]||[]).includes(region);
+}
+
+function searchOfficialCatalog(query,filter="전체"){
+  const nq=normalizeSearchText(query);
+  if(!nq)return [];
+  const scored=[];
+  for(const rec of officialCatalog()){
+    if(!officialRegionAllowed(rec.region,filter))continue;
+    const name=normalizeSearchText(rec.name), code=String(rec.code||"");
+    const basin=normalizeSearchText(rec.basin), region=normalizeSearchText(rec.region), city=normalizeSearchText(rec.city), grade=normalizeSearchText(rec.grade);
+    let score=-1;
+    if(code===query.trim())score=1000;
+    else if(name===nq)score=900;
+    else if(name.startsWith(nq))score=700;
+    else if(name.includes(nq))score=500;
+    else if(code.includes(query.trim()))score=400;
+    else if(city.includes(nq))score=250;
+    else if(basin.includes(nq)||region.includes(nq)||grade.includes(nq))score=100;
+    if(score>=0)scored.push({rec,score});
+  }
+  scored.sort((a,b)=>b.score-a.score||a.rec.name.localeCompare(b.rec.name,"ko")||a.rec.code.localeCompare(b.rec.code));
+  return scored.map(x=>x.rec);
+}
+
+function getBuiltInRiverMatches(q,filter){
+  const nq=normalizeSearchText(q),out=[];
   Object.entries(REGIONS).forEach(([g,arr])=>{
-    if(filter!=="전체" && filter!==g)return;
-    const filtered=arr.filter(r=>!q||g.includes(q)||r[0].includes(q));
-    if(!filtered.length)return;
-    const group=document.createElement("div");group.className="group";
-    const title=document.createElement("div");title.className="groupTitle";title.innerHTML=`⌄ ${g}<span class="regionBadge">${filtered.length}</span>`;group.appendChild(title);
-    filtered.forEach(r=>{
-      const d=document.createElement("div");d.className="river";d.innerHTML=`<span>›</span><span>${r[0]}</span><span class="chk"></span>`;
-      d.onclick=()=>{document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));d.classList.add("active");selectedRiver=r;updateValidationTarget();updateValidationStats();renderValidationList();renderValidationMarkers();};
-      d.ondblclick=()=>{selectedRiver=r;updateValidationTarget();applySelectedRiver();};
-      group.appendChild(d);
+    if(filter!=="전체"&&filter!==g)return;
+    arr.forEach(r=>{
+      if(!nq||normalizeSearchText(g).includes(nq)||normalizeSearchText(r[0]).includes(nq)){
+        out.push([r[0],r[1],r[2],r[3],g,{source:"builtIn",region:g}]);
+      }
     });
-    riverList.appendChild(group);
   });
+  return out;
 }
-function applySelectedRiver(){
+
+function selectRiver(r,element){
+  document.querySelectorAll(".river").forEach(x=>x.classList.remove("active"));
+  if(element)element.classList.add("active");
+  selectedRiver=r;
+  updateValidationTarget();updateValidationStats();renderValidationList();renderValidationMarkers();
+}
+
+function createRiverRow(r,group,source){
+  const d=document.createElement("div");d.className="river";
+  const arrow=document.createElement("span");arrow.textContent="›";
+  const wrap=document.createElement("span");wrap.className="riverText";
+  const name=document.createElement("span");name.className="riverName";name.textContent=String(r[0]);
+  wrap.appendChild(name);
+  const meta=riverMeta(r);
+  const details=[];
+  if(meta.region)details.push(meta.region);
+  if(meta.city)details.push(meta.city);
+  if(meta.grade)details.push(meta.grade);
+  if(meta.basin)details.push(meta.basin+"권역");
+  if(meta.code)details.push(meta.code);
+  if(source&&!meta.code)details.push(source);
+  if(details.length){const sub=document.createElement("span");sub.className="riverMeta";sub.textContent=details.join(" · ");wrap.appendChild(sub)}
+  const star=document.createElement("button");star.type="button";star.className="favStar"+(isFavoriteRiver(r)?" on":"");
+  star.title=isFavoriteRiver(r)?"즐겨찾기 해제":"즐겨찾기 추가";star.textContent=isFavoriteRiver(r)?"★":"☆";
+  star.onclick=e=>{e.preventDefault();e.stopPropagation();toggleFavoriteRiver(r,group)};
+  d.appendChild(arrow);d.appendChild(wrap);d.appendChild(star);
+  d.onclick=()=>selectRiver(r,d);
+  d.ondblclick=()=>{selectRiver(r,d);applySelectedRiver()};
+  return d;
+}
+function appendRiverGroup(titleText,rows,source){
+  if(!rows.length)return;
+  const group=document.createElement("div");group.className="group";
+  const title=document.createElement("div");title.className="groupTitle";
+  title.innerHTML=`⌄ ${titleText}<span class="regionBadge">${rows.length}</span>`;group.appendChild(title);
+  rows.forEach(r=>group.appendChild(createRiverRow(r,r[4]||titleText,source)));
+  riverList.appendChild(group);
+}
+
+function favoriteMatchesQuery(r,q,filter){
+  const nq=normalizeSearchText(q);
+  if(filter!=="전체"&&filter!=="전국 주요"){
+    const reg=riverRegion(r);
+    if(riverSourceType(r)==="official"){
+      if(!officialRegionAllowed(reg,filter))return false;
+    }else if(r[4]!==filter)return false;
+  }
+  if(!nq)return true;
+  return normalizeSearchText(r[0]).includes(nq)||normalizeSearchText(riverCode(r)).includes(nq)||normalizeSearchText(riverRegion(r)).includes(nq)||normalizeSearchText(riverCity(r)).includes(nq)||normalizeSearchText(riverBasin(r)).includes(nq);
+}
+
+function renderRivers(){
+  const q=(search.value||"").trim(),filter=regionFilter.value;
+  riverList.innerHTML="";updateOfficialDbBadge();
+  if(favoriteOnly){
+    const favs=favoriteRivers.filter(r=>favoriteMatchesQuery(r,q,filter));
+    appendRiverGroup("★ 즐겨찾기",favs,"저장");
+    riverSearchState.innerText=favs.length?`즐겨찾기 ${favs.length}개`:`조건에 맞는 즐겨찾기가 없습니다.`;
+    return;
+  }
+  if(!q){
+    // Empty search keeps the original quick-access list; thousands of rows are not rendered at once.
+    const built=getBuiltInRiverMatches("",filter);
+    const byGroup=new Map();
+    for(const r of built){if(!byGroup.has(r[4]))byGroup.set(r[4],[]);byGroup.get(r[4]).push(r)}
+    for(const [g,rows] of byGroup)appendRiverGroup(g,rows,"바로가기");
+    riverSearchState.innerText=`공식 하천 ${Number(window.RIVER_CATALOG_META?.riverCount||3841).toLocaleString()}개 검색 가능 · 즐겨찾기 ${favoriteRivers.length}개`;
+    return;
+  }
+
+  const official=searchOfficialCatalog(q,filter);
+  const displayOfficial=official.slice(0,120).map(catalogToRiver);
+  if(displayOfficial.length)appendRiverGroup("공식 한국하천일람",displayOfficial,"공식");
+
+  const built=getBuiltInRiverMatches(q,filter).filter(r=>!displayOfficial.some(o=>normalizeSearchText(o[0])===normalizeSearchText(r[0])&&riverRegion(o)===riverRegion(r)));
+  if(built.length)appendRiverGroup("RiverDEM 바로가기",built,"등록");
+
+  if(!official.length&&onlineRiverResults.length)appendRiverGroup("VWorld 보조검색",onlineRiverResults,"온라인");
+
+  if(!riverList.children.length){
+    const empty=document.createElement("div");empty.className="help";empty.style.padding="12px 4px";
+    empty.textContent=getKey()?"공식 국가·지방하천 DB에서 찾지 못했습니다. VWorld 보조검색 중입니다.":"공식 국가·지방하천 DB에서 찾지 못했습니다. 소하천 검색은 VWorld API Key가 필요할 수 있습니다.";
+    riverList.appendChild(empty);
+  }
+  let state=`검색 "${q}" · 공식 ${official.length}건`;
+  if(official.length>120)state+=` · 상위 120건 표시`;
+  if(!official.length)state+=getKey()?` · VWorld ${onlineRiverResults.length}건`:` · VWorld Key 없음`;
+  riverSearchState.innerText=state;
+}
+
+function handleRiverSearchInput(){
+  clearTimeout(riverSearchTimer);onlineRiverResults=[];renderRivers();
+  const q=(search.value||"").trim();if(!q||q.length<2)return;
+  if(searchOfficialCatalog(q,regionFilter.value).length)return;
+  if(getBuiltInRiverMatches(q,regionFilter.value).length)return;
+  if(getKey())riverSearchTimer=setTimeout(()=>searchRiverOnline(q),450);
+}
+
+function handleRiverSearchKey(e){
+  if(e.key!=="Enter")return;e.preventDefault();
+  const q=(search.value||"").trim();if(!q)return;
+  const official=searchOfficialCatalog(q,regionFilter.value);
+  const exact=official.filter(r=>normalizeSearchText(r.name)===normalizeSearchText(q)||r.code===q);
+  if(exact.length===1){selectedRiver=catalogToRiver(exact[0]);updateValidationTarget();applySelectedRiver();return}
+  if(official.length===1){selectedRiver=catalogToRiver(official[0]);updateValidationTarget();applySelectedRiver();return}
+  const built=getBuiltInRiverMatches(q,regionFilter.value);
+  if(!official.length&&built.length===1){selectedRiver=built[0];updateValidationTarget();applySelectedRiver();return}
+  if(!official.length&&onlineRiverResults.length===1){selectedRiver=onlineRiverResults[0];updateValidationTarget();applySelectedRiver();return}
+  if(!official.length&&getKey())searchRiverOnline(q,true);
+}
+
+function stripVWorldTitle(v){const temp=document.createElement("div");temp.innerHTML=String(v||"");return(temp.textContent||temp.innerText||"").trim()}
+async function fetchVWorldPlaces(query,size=30){
+  const key=getKey();if(!key)return [];
+  const params=new URLSearchParams({service:"search",request:"search",version:"2.0",crs:"EPSG:4326",size:String(size),page:"1",query,type:"place",format:"json",errorformat:"json",key});
+  const res=await fetch("https://api.vworld.kr/req/search?"+params.toString());if(!res.ok)throw new Error("HTTP "+res.status);
+  const data=await res.json();const response=data?.response;
+  if(response?.status!=="OK")return [];
+  return (response?.result?.items||[]).map(item=>({
+    title:stripVWorldTitle(item?.title),category:String(item?.category||""),
+    x:Number(item?.point?.x),y:Number(item?.point?.y),road:item?.address?.road||"",parcel:item?.address?.parcel||""
+  })).filter(x=>x.title&&Number.isFinite(x.x)&&Number.isFinite(x.y));
+}
+async function searchRiverOnline(query,moveIfSingle=false){
+  const key=getKey(),currentSerial=++riverSearchSerial;if(!key){onlineRiverResults=[];renderRivers();return}
+  riverSearchState.innerText=`검색 "${query}" · 공식 DB 미검색 · VWorld 보조검색 중...`;
+  try{
+    const items=await fetchVWorldPlaces(query,30);if(currentSerial!==riverSearchSerial)return;
+    const nq=normalizeSearchText(query),dedup=new Map();
+    for(const x of items){
+      const nt=normalizeSearchText(x.title);
+      if(!(nt.includes(nq)||x.title.endsWith("강")||x.title.endsWith("천")||x.category.includes("하천")))continue;
+      const r=[x.title,x.y,x.x,14,"VWorld",{source:"vworld",region:"VWorld"}];
+      if(!dedup.has(riverKey(r)))dedup.set(riverKey(r),r);
+    }
+    onlineRiverResults=[...dedup.values()].slice(0,30);renderRivers();
+    if(moveIfSingle&&onlineRiverResults.length===1){selectedRiver=onlineRiverResults[0];updateValidationTarget();applySelectedRiver()}
+  }catch(err){if(currentSerial!==riverSearchSerial)return;onlineRiverResults=[];renderRivers();riverSearchState.innerText=`검색 "${query}" · VWorld 보조검색 실패: ${err.message}`}
+}
+
+function findBuiltInCoordinate(r){
+  const target=normalizeSearchText(r[0]).replace(/(순창|구례|화개|여의도|잠실|충주|옥천|안동|김해)$/,'');
+  let candidate=null;
+  for(const [g,arr] of Object.entries(REGIONS))for(const b of arr){
+    const bn=normalizeSearchText(b[0]);
+    if(bn===normalizeSearchText(r[0])||bn.startsWith(target)||target.startsWith(bn)){
+      if(!candidate)candidate=[b[1],b[2],b[3]];
+    }
+  }
+  return candidate;
+}
+function scoreVWorldRiverPlace(item,r){
+  const name=normalizeSearchText(r[0]),title=normalizeSearchText(item.title),region=riverRegion(r),city=riverCity(r);
+  const addr=String(item.road||"")+" "+String(item.parcel||"");
+  let s=0;if(title===name)s+=100;if(title.includes(name))s+=50;if(item.category.includes("하천"))s+=30;if(region&&addr.includes(region))s+=40;if(city&&addr.includes(city))s+=60;
+  return s;
+}
+async function resolveRiverCoordinates(r){
+  const lat=Number(r[1]),lon=Number(r[2]);
+  if(Number.isFinite(lat)&&Number.isFinite(lon))return [lat,lon,Number(r[3]||14)];
+  const cacheKey=riverKey(r),cached=riverCoordCache[cacheKey];
+  if(cached&&Number.isFinite(Number(cached.lat))&&Number.isFinite(Number(cached.lon)))return [Number(cached.lat),Number(cached.lon),Number(cached.zoom||14)];
+  const builtin=findBuiltInCoordinate(r);if(builtin&&riverSourceType(r)!=="official")return builtin;
+  if(!getKey())return null;
+  const name=String(r[0]),region=riverRegion(r),city=riverCity(r),queries=[];
+  if(region&&city)queries.push(`${name} ${region} ${city}`);
+  if(region)queries.push(`${name} ${region}`);queries.push(name);
+  let candidates=[];
+  for(const q of queries){
+    try{const items=await fetchVWorldPlaces(q,30);candidates.push(...items)}catch(e){}
+    if(candidates.some(x=>normalizeSearchText(x.title)===normalizeSearchText(name)&&(!region||(x.road+" "+x.parcel).includes(region))&&(!city||(x.road+" "+x.parcel).includes(city))))break;
+  }
+  candidates=candidates.filter(x=>normalizeSearchText(x.title).includes(normalizeSearchText(name))||x.category.includes("하천"));
+  if(city){const cityMatches=candidates.filter(x=>(x.road+" "+x.parcel).includes(city));if(cityMatches.length)candidates=cityMatches}
+  if(region){const regional=candidates.filter(x=>(x.road+" "+x.parcel).includes(region));if(regional.length)candidates=regional}
+  candidates.sort((a,b)=>scoreVWorldRiverPlace(b,r)-scoreVWorldRiverPlace(a,r));
+  const best=candidates[0];if(!best)return null;
+  riverCoordCache[cacheKey]={lat:best.y,lon:best.x,zoom:14,title:best.title};saveRiverCoordCache();
+  r[1]=best.y;r[2]=best.x;r[3]=14;return [best.y,best.x,14];
+}
+
+async function applySelectedRiver(){
   if(!selectedRiver){alert("하천을 선택하세요.");return}
-  map.setView([selectedRiver[1],selectedRiver[2]],selectedRiver[3]);
-  if(marker)marker.setLatLng([selectedRiver[1],selectedRiver[2]]);else marker=L.marker([selectedRiver[1],selectedRiver[2]]).addTo(map);
-  log.innerText=`선택된 하천: ${selectedRiver[0]}\n좌표: ${selectedRiver[1]}, ${selectedRiver[2]}`;
-  samplePoint(selectedRiver[1],selectedRiver[2]);
+  const coords=await resolveRiverCoordinates(selectedRiver);
+  if(!coords){
+    const meta=riverMeta(selectedRiver);
+    const info=[selectedRiver[0],meta.region,meta.code].filter(Boolean).join(" · ");
+    alert(`하천은 선택되었습니다.\n${info}\n\n공식 하천일람에는 대표 좌표가 포함되지 않아 지도 이동에는 VWorld API Key가 필요합니다.`);
+    log.innerText=`선택된 하천: ${selectedRiver[0]}\n하천코드: ${meta.code||"-"}\n지도 좌표: 미확인`;
+    return;
+  }
+  const [lat,lon,zoom]=coords;map.setView([lat,lon],zoom);
+  if(marker)marker.setLatLng([lat,lon]);else marker=L.marker([lat,lon]).addTo(map);
+  const meta=riverMeta(selectedRiver);
+  log.innerText=`선택된 하천: ${selectedRiver[0]}\n하천코드: ${meta.code||"-"}\n구분: ${meta.grade||"-"}\n권역: ${meta.basin||"-"}\n지역: ${meta.region||selectedRiver[4]||"-"}\n좌표: ${lat}, ${lon}`;
+  samplePoint(lat,lon);
 }
+
 function openDemFile(){
   const input=document.getElementById("demFile");
   if(!input){alert("DEM 파일 입력 요소를 찾지 못했습니다.");return;}
@@ -409,6 +767,11 @@ function openDemFile(){
   input.click();
 }
 window.openDemFile=openDemFile;
+window.handleRiverSearchInput=handleRiverSearchInput;
+window.handleRiverSearchKey=handleRiverSearchKey;
+window.toggleFavoriteFilter=toggleFavoriteFilter;
+window.applySelectedRiver=applySelectedRiver;
+
 window.setVWorldKey=setVWorldKey;
 window.toggleLeft=toggleLeft;
 window.toggleRight=toggleRight;
@@ -472,6 +835,7 @@ demFile.addEventListener("change",async e=>{
     maxZ.innerText=mx.toFixed(1)+" m";
     avgZ.innerText=av.toFixed(1)+" m";
     demRes.innerText=Math.abs(pixelX).toFixed(1)+" m";
+    updateValidationModeUi();
 
     drawHeatmap();
     updateValidationTarget();
@@ -664,18 +1028,42 @@ function toggleSwitch(el,type){
 
 const VALIDATION_STANDARDS={
   "1":{label:"1 m × 1 m",rmseLimit:0.50,maxLimit:0.75,minPoints:5},
-  "5":{label:"5 m × 5 m",rmseLimit:1.00,maxLimit:2.00,minPoints:5}
+  "5":{label:"5 m × 5 m",rmseLimit:1.00,maxLimit:2.00,minPoints:5},
+  "other":{label:"기타 해상도",rmseLimit:null,maxLimit:null,minPoints:0}
 };
+
 function vEl(id){return document.getElementById(id)}
 function currentRiverName(){return selectedRiver?selectedRiver[0]:"미선택"}
 function currentDemName(){const v=(demName.innerText||"").trim();return v&&v!=="-"?v:"미선택"}
-function currentValidationKey(){return currentRiverName()+"||"+currentDemName()+"||"+vEl("validationStandard").value}
+function currentValidationMode(){return vEl("validationMode")?.value||"simulation"}
+
+function getCurrentDemResolution(){
+  const r=Math.abs(Number(pixelX));
+  return Number.isFinite(r)&&r>0?r:null;
+}
+
+function classifyOfficialDemResolution(){
+  const r=getCurrentDemResolution();
+  if(r===null)return "other";
+  if(r>=0.5&&r<=1.5)return "1";
+  if(r>=4.0&&r<=6.0)return "5";
+  return "other";
+}
+
+function currentValidationKey(){
+  const mode=currentValidationMode();
+  const standard=mode==="real"?(vEl("validationStandard")?.value||"other"):"simulation";
+  return currentRiverName()+"||"+currentDemName()+"||"+mode+"||"+standard;
+}
+
 function validationTypeLabel(type){
   return {ground:"지면",water:"수면",bridge:"교량",vegetation:"식생",other:"기타"}[type]||type;
 }
+
 function saveValidationRecords(){
   try{localStorage.setItem(VALIDATION_STORAGE_KEY,JSON.stringify(validationRecords))}catch(e){}
 }
+
 function loadValidationRecords(){
   try{
     const raw=localStorage.getItem(VALIDATION_STORAGE_KEY);
@@ -683,22 +1071,89 @@ function loadValidationRecords(){
     validationRecords=Array.isArray(arr)?arr:[];
   }catch(e){validationRecords=[]}
 }
+
 function updateValidationTarget(){
   const el=vEl("validationTarget");
   if(!el)return;
   el.innerText=`대상: ${currentRiverName()} / ${currentDemName()}`;
 }
+
+function updateValidationModeUi(){
+  const mode=currentValidationMode();
+  const realBox=vEl("realValidationControls");
+  const ref=vEl("validationReferenceZ");
+  const status=vEl("validationModeStatus");
+  const countLabel=vEl("validationCountLabel");
+  const addBtn=vEl("validationAddBtn");
+
+  if(mode==="simulation"){
+    realBox?.classList.add("validationHidden");
+    ref?.classList.add("validationHidden");
+    if(ref)ref.value="";
+    if(countLabel)countLabel.innerText="시뮬레이션 기록";
+    if(addBtn)addBtn.innerText="현재 지점 기록";
+
+    const r=getCurrentDemResolution();
+    const resText=r===null?"DEM 미선택":`${r.toFixed(1)} m DEM`;
+    if(status){
+      status.className="validationModeStatus";
+      status.innerText=`공식 DEM 기반 분석 · ${resText} · 독립 실측 기준점 미등록 · 정확도 판정 보류`;
+    }
+  }else{
+    realBox?.classList.remove("validationHidden");
+    ref?.classList.remove("validationHidden");
+    if(countLabel)countLabel.innerText="판정 포함 지점";
+    if(addBtn)addBtn.innerText="현재 지점 추가";
+
+    const cls=classifyOfficialDemResolution();
+    const standardEl=vEl("validationStandard");
+    if(standardEl){
+      standardEl.value=cls;
+      standardEl.disabled=true;
+    }
+
+    const r=getCurrentDemResolution();
+    if(status){
+      if(cls==="1"||cls==="5"){
+        status.className="validationModeStatus real";
+        status.innerText=`독립 실측 검증 · ${VALIDATION_STANDARDS[cls].label} 기준 자동 적용`;
+      }else{
+        status.className="validationModeStatus warn";
+        status.innerText=`독립 실측값과 수치 비교는 가능하지만 현재 ${r===null?"해상도 미확인":r.toFixed(1)+" m"} DEM은 공식 1 m / 5 m 정확도 판정 대상이 아닙니다.`;
+      }
+    }
+  }
+
+  updateValidationStats();
+  renderValidationList();
+  renderValidationMarkers();
+}
+
 function currentValidationRecords(){
   const river=currentRiverName();
   const dem=currentDemName();
-  const standard=vEl("validationStandard").value;
-  return validationRecords.filter(r=>r.river===river && r.demFile===dem && r.standard===standard);
+  const mode=currentValidationMode();
+
+  return validationRecords.filter(r=>{
+    const recordMode=r.mode||"real";
+    if(r.river!==river||r.demFile!==dem||recordMode!==mode)return false;
+
+    if(mode==="simulation")return true;
+
+    const standard=vEl("validationStandard")?.value||"other";
+    return (r.standard||"other")===standard;
+  });
 }
-function currentIncludedRecords(){return currentValidationRecords().filter(r=>r.included)}
+
+function currentIncludedRecords(){
+  return currentValidationRecords().filter(r=>r.included);
+}
+
 function getValidationStats(){
   const rows=currentIncludedRecords();
   if(!rows.length)return null;
-  let sum=0,sumSq=0,maxAbs=0;
+
+  let sum=0,sumSq=0,maxAbs=0,n=0;
   for(const r of rows){
     const e=Number(r.error);
     if(!Number.isFinite(e))continue;
@@ -706,62 +1161,143 @@ function getValidationStats(){
     sumSq+=e*e;
     const a=Math.abs(e);
     if(a>maxAbs)maxAbs=a;
+    n++;
   }
-  const n=rows.length;
-  return {n:n,bias:sum/n,rmse:Math.sqrt(sumSq/n),maxAbs:maxAbs};
+  if(!n)return null;
+  return {n,bias:sum/n,rmse:Math.sqrt(sumSq/n),maxAbs};
 }
+
 function updateValidationStats(){
   const countEl=vEl("validationCount");
   if(!countEl)return;
-  const standard=VALIDATION_STANDARDS[vEl("validationStandard").value];
-  const s=getValidationStats();
+
+  const mode=currentValidationMode();
   const judge=vEl("validationJudge");
-  if(!s){
-    countEl.innerText=`0 / ${standard.minPoints}`;
+
+  if(mode==="simulation"){
+    const rows=currentValidationRecords();
+    countEl.innerText=String(rows.length);
     vEl("validationBias").innerText="-";
     vEl("validationRmse").innerText="-";
     vEl("validationMax").innerText="-";
     judge.className="validationJudge wait";
-    judge.innerText=`${standard.label}: 도엽당 ${standard.minPoints}점 이상 확보 후 판정합니다.`;
+    judge.innerText=`공식 DEM 기반 분석 · 기록 ${rows.length}점 · 독립 실측 기준점 없음 · 정확도 판정 보류`;
     return;
   }
-  countEl.innerText=`${s.n} / ${standard.minPoints}`;
+
+  const standardKey=vEl("validationStandard")?.value||"other";
+  const standard=VALIDATION_STANDARDS[standardKey];
+  const s=getValidationStats();
+
+  if(!s){
+    countEl.innerText=standardKey==="other"?"0":`0 / ${standard.minPoints}`;
+    vEl("validationBias").innerText="-";
+    vEl("validationRmse").innerText="-";
+    vEl("validationMax").innerText="-";
+    judge.className="validationJudge wait";
+
+    if(standardKey==="other"){
+      judge.innerText="실측값 비교는 가능하지만 현재 DEM 해상도에는 공식 1 m / 5 m 판정을 적용하지 않습니다.";
+    }else{
+      judge.innerText=`${standard.label}: 도엽당 ${standard.minPoints}점 이상 확보 후 판정합니다.`;
+    }
+    return;
+  }
+
+  countEl.innerText=standardKey==="other"?String(s.n):`${s.n} / ${standard.minPoints}`;
   vEl("validationBias").innerText=`${s.bias>=0?"+":""}${s.bias.toFixed(3)} m`;
   vEl("validationRmse").innerText=s.rmse.toFixed(3)+" m";
   vEl("validationMax").innerText=s.maxAbs.toFixed(3)+" m";
+
+  if(standardKey==="other"){
+    judge.className="validationJudge wait";
+    judge.innerText=`비공식 비교 · RMSE ${s.rmse.toFixed(3)} m · 최대 ${s.maxAbs.toFixed(3)} m · 적합/부적합 판정 보류`;
+    return;
+  }
+
   if(s.n<standard.minPoints){
     judge.className="validationJudge wait";
     judge.innerText=`검증 중 ${s.n}/${standard.minPoints} · 현재 RMSE ${s.rmse.toFixed(3)} m · 최대 ${s.maxAbs.toFixed(3)} m`;
     return;
   }
+
   const pass=s.rmse<=standard.rmseLimit && s.maxAbs<=standard.maxLimit;
   judge.className="validationJudge "+(pass?"pass":"fail");
   judge.innerText=`${pass?"적합":"기준 초과"} · RMSE ${s.rmse.toFixed(3)} / ${standard.rmseLimit.toFixed(2)} m · 최대 ${s.maxAbs.toFixed(3)} / ${standard.maxLimit.toFixed(2)} m`;
 }
+
 function addValidationPoint(){
   if(!raster){alert("먼저 DEM을 열어주세요.");return}
-  if(!lastDemSample){alert("지도에서 검증 지점을 먼저 클릭해주세요.");return}
+  if(!lastDemSample){alert("지도에서 기록할 지점을 먼저 클릭해주세요.");return}
+
+  const mode=currentValidationMode();
+  const sampleMode=vEl("validationSampleMode").value;
+  const demValue=sampleMode==="avg3" && Number.isFinite(lastDemSample.avg3)
+    ?lastDemSample.avg3:lastDemSample.z;
+  const type=vEl("validationType").value;
+
+  if(mode==="simulation"){
+    const record={
+      id:Date.now()+Math.random(),
+      mode:"simulation",
+      river:currentRiverName(),
+      demFile:currentDemName(),
+      standard:"simulation",
+      type,
+      included:false,
+      sampleMode,
+      lat:lastDemSample.lat,lon:lastDemSample.lon,
+      x:lastDemSample.x,y:lastDemSample.y,row:lastDemSample.row,col:lastDemSample.col,
+      referenceZ:null,
+      demZ:demValue,
+      error:null,
+      absError:null,
+      resolution:getCurrentDemResolution(),
+      note:(vEl("validationNote").value||"").trim(),
+      createdAt:new Date().toISOString()
+    };
+
+    validationRecords.push(record);
+    saveValidationRecords();
+    vEl("validationNote").value="";
+    updateValidationStats();
+    renderValidationList();
+    renderValidationMarkers();
+
+    log.innerText=`공식 DEM 분석 지점 기록\n하천: ${record.river}\nDEM: ${record.demFile}\n구분: ${validationTypeLabel(record.type)}\nDEM: ${record.demZ.toFixed(3)} m\n정확도 판정: 보류`;
+    return;
+  }
+
   const input=vEl("validationReferenceZ");
   const reference=Number(input.value);
-  if(!Number.isFinite(reference)){alert("실제 측량 고도를 입력해주세요.");input.focus();return}
-  const mode=vEl("validationSampleMode").value;
-  const demValue=mode==="avg3" && Number.isFinite(lastDemSample.avg3)?lastDemSample.avg3:lastDemSample.z;
-  const type=vEl("validationType").value;
+  if(!Number.isFinite(reference)){
+    alert("실제 측량 고도를 입력해주세요.");
+    input.focus();
+    return;
+  }
+
+  const standard=vEl("validationStandard")?.value||"other";
   const error=demValue-reference;
   const record={
     id:Date.now()+Math.random(),
+    mode:"real",
     river:currentRiverName(),
     demFile:currentDemName(),
-    standard:vEl("validationStandard").value,
-    type:type,
+    standard,
+    type,
     included:type==="ground",
-    sampleMode:mode,
+    sampleMode,
     lat:lastDemSample.lat,lon:lastDemSample.lon,
     x:lastDemSample.x,y:lastDemSample.y,row:lastDemSample.row,col:lastDemSample.col,
-    referenceZ:reference,demZ:demValue,error:error,absError:Math.abs(error),
+    referenceZ:reference,
+    demZ:demValue,
+    error,
+    absError:Math.abs(error),
+    resolution:getCurrentDemResolution(),
     note:(vEl("validationNote").value||"").trim(),
     createdAt:new Date().toISOString()
   };
+
   validationRecords.push(record);
   saveValidationRecords();
   input.value="";
@@ -769,27 +1305,47 @@ function addValidationPoint(){
   updateValidationStats();
   renderValidationList();
   renderValidationMarkers();
-  log.innerText=`검증 지점 추가\n하천: ${record.river}\nDEM: ${record.demFile}\n구분: ${validationTypeLabel(record.type)}\n실측: ${record.referenceZ.toFixed(3)} m\nDEM: ${record.demZ.toFixed(3)} m\n오차(DEM-실측): ${record.error>=0?"+":""}${record.error.toFixed(3)} m`;
+
+  log.innerText=`독립 실측 검증 지점 추가\n하천: ${record.river}\nDEM: ${record.demFile}\n구분: ${validationTypeLabel(record.type)}\n실측: ${record.referenceZ.toFixed(3)} m\nDEM: ${record.demZ.toFixed(3)} m\n오차(DEM-실측): ${record.error>=0?"+":""}${record.error.toFixed(3)} m`;
 }
+
 function escapeHtml(v){
   return String(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
 }
+
 function renderValidationList(){
   const el=vEl("validationList");
   if(!el)return;
+
   const rows=currentValidationRecords().slice().reverse();
-  if(!rows.length){el.innerHTML='<div class="help">현재 대상의 검증 기록이 없습니다.</div>';return}
+  if(!rows.length){
+    el.innerHTML='<div class="help">현재 대상의 기록이 없습니다.</div>';
+    return;
+  }
+
   el.innerHTML=rows.map(r=>{
-    const sign=r.error>=0?"+":"";
+    const mode=r.mode||"real";
+
+    if(mode==="simulation"){
+      return `<div class="validationItem excluded">
+        <button onclick="deleteValidationPoint(${JSON.stringify(r.id)})">삭제</button>
+        <strong>공식 DEM 분석 · ${validationTypeLabel(r.type)}</strong><br>
+        DEM ${Number(r.demZ).toFixed(3)} m · 정확도 판정 보류
+        ${r.note?`<br>메모: ${escapeHtml(r.note)}`:""}
+      </div>`;
+    }
+
+    const sign=Number(r.error)>=0?"+":"";
     return `<div class="validationItem${r.included?"":" excluded"}">
       <button onclick="deleteValidationPoint(${JSON.stringify(r.id)})">삭제</button>
-      <strong>${validationTypeLabel(r.type)}</strong><br>
+      <strong>독립 실측 검증 · ${validationTypeLabel(r.type)}</strong><br>
       실측 ${Number(r.referenceZ).toFixed(3)} m / DEM ${Number(r.demZ).toFixed(3)} m<br>
-      오차 ${sign}${Number(r.error).toFixed(3)} m${r.included?"":" · 판정 제외"}
+      오차 ${sign}${Number(r.error).toFixed(3)} m${r.included?"":" · 공식 판정 제외"}
       ${r.note?`<br>메모: ${escapeHtml(r.note)}`:""}
     </div>`;
   }).join("");
 }
+
 function deleteValidationPoint(id){
   validationRecords=validationRecords.filter(r=>String(r.id)!==String(id));
   saveValidationRecords();
@@ -797,46 +1353,107 @@ function deleteValidationPoint(id){
   renderValidationList();
   renderValidationMarkers();
 }
+
 function clearCurrentValidationGroup(){
   const rows=currentValidationRecords();
   if(!rows.length)return;
-  if(!confirm(`현재 대상의 검증 기록 ${rows.length}개를 삭제할까요?`))return;
-  const key=currentValidationKey();
-  validationRecords=validationRecords.filter(r=>`${r.river}||${r.demFile}||${r.standard}`!==key);
+
+  if(!confirm(`현재 대상의 기록 ${rows.length}개를 삭제할까요?`))return;
+
+  const ids=new Set(rows.map(r=>String(r.id)));
+  validationRecords=validationRecords.filter(r=>!ids.has(String(r.id)));
+
   saveValidationRecords();
   updateValidationStats();
   renderValidationList();
   renderValidationMarkers();
-  log.innerText="현재 대상 검증 기록 초기화 완료";
+  log.innerText="현재 대상 기록 초기화 완료";
 }
+
 function renderValidationMarkers(){
   if(!validationLayer)return;
   validationLayer.clearLayers();
+
   const rows=currentValidationRecords();
   for(const r of rows){
+    const mode=r.mode||"real";
     const marker=L.circleMarker([r.lat,r.lon],{radius:5,weight:2,fillOpacity:.85});
-    const sign=Number(r.error)>=0?"+":"";
-    marker.bindPopup(`<b>${escapeHtml(validationTypeLabel(r.type))}</b><br>실측 ${Number(r.referenceZ).toFixed(3)} m<br>DEM ${Number(r.demZ).toFixed(3)} m<br>오차 ${sign}${Number(r.error).toFixed(3)} m${r.included?"":"<br>판정 제외"}`);
+
+    if(mode==="simulation"){
+      marker.bindPopup(
+        `<b>공식 DEM 분석 · ${escapeHtml(validationTypeLabel(r.type))}</b>`+
+        `<br>DEM ${Number(r.demZ).toFixed(3)} m`+
+        `<br>독립 실측 기준점 없음`+
+        `<br>정확도 판정 보류`
+      );
+    }else{
+      const sign=Number(r.error)>=0?"+":"";
+      marker.bindPopup(
+        `<b>독립 실측 검증 · ${escapeHtml(validationTypeLabel(r.type))}</b>`+
+        `<br>실측 ${Number(r.referenceZ).toFixed(3)} m`+
+        `<br>DEM ${Number(r.demZ).toFixed(3)} m`+
+        `<br>오차 ${sign}${Number(r.error).toFixed(3)} m`+
+        `${r.included?"":"<br>공식 판정 제외"}`
+      );
+    }
+
     marker.addTo(validationLayer);
   }
 }
+
 function exportValidationCsv(){
-  if(!validationRecords.length){alert("내보낼 검증 기록이 없습니다.");return}
-  const headers=["하천","DEM파일","기준","구분","판정포함","샘플방식","위도","경도","EPSG5179_X","EPSG5179_Y","row","col","실측고도_m","DEM고도_m","오차_DEM-실측_m","절대오차_m","메모","기록시각"];
+  if(!validationRecords.length){
+    alert("내보낼 검증 기록이 없습니다.");
+    return;
+  }
+
+  const headers=[
+    "검증단계","하천","DEM파일","DEM해상도_m","기준","구분","판정포함","샘플방식",
+    "위도","경도","EPSG5179_X","EPSG5179_Y","row","col",
+    "실측고도_m","DEM고도_m","오차_DEM-실측_m","절대오차_m","메모","기록시각"
+  ];
+
   const q=v=>'"'+String(v??"").replaceAll('"','""')+'"';
   const lines=[headers.map(q).join(",")];
+
   for(const r of validationRecords){
+    const mode=r.mode||"real";
+    const standardLabel=
+      mode==="simulation"?"판정 보류":
+      r.standard==="1"?"1 m × 1 m":
+      r.standard==="5"?"5 m × 5 m":
+      "기타 해상도 / 공식 판정 없음";
+
     lines.push([
-      r.river,r.demFile,r.standard==="1"?"1 m × 1 m":"5 m × 5 m",validationTypeLabel(r.type),r.included?"Y":"N",
-      r.sampleMode==="avg3"?"3x3 평균":"단일 셀",Number(r.lat).toFixed(8),Number(r.lon).toFixed(8),Number(r.x).toFixed(3),Number(r.y).toFixed(3),r.row,r.col,
-      Number(r.referenceZ).toFixed(3),Number(r.demZ).toFixed(3),Number(r.error).toFixed(3),Number(r.absError).toFixed(3),r.note||"",r.createdAt||""
+      mode==="simulation"?"공식 DEM 기반 분석":"독립 실측 검증",
+      r.river,
+      r.demFile,
+      Number.isFinite(Number(r.resolution))?Number(r.resolution).toFixed(3):"",
+      standardLabel,
+      validationTypeLabel(r.type),
+      r.included?"Y":"N",
+      r.sampleMode==="avg3"?"3x3 평균":"단일 셀",
+      Number(r.lat).toFixed(8),
+      Number(r.lon).toFixed(8),
+      Number(r.x).toFixed(3),
+      Number(r.y).toFixed(3),
+      r.row,
+      r.col,
+      mode==="real"&&Number.isFinite(Number(r.referenceZ))?Number(r.referenceZ).toFixed(3):"",
+      Number(r.demZ).toFixed(3),
+      mode==="real"&&Number.isFinite(Number(r.error))?Number(r.error).toFixed(3):"",
+      mode==="real"&&Number.isFinite(Number(r.absError))?Number(r.absError).toFixed(3):"",
+      r.note||"",
+      r.createdAt||""
     ].map(q).join(","));
   }
+
   const blob=new Blob(["\ufeff"+lines.join("\r\n")],{type:"text/csv;charset=utf-8"});
   const url=URL.createObjectURL(blob);
   const a=document.createElement("a");
   const now=new Date(),pad=n=>String(n).padStart(2,"0");
   const stamp=now.getFullYear()+pad(now.getMonth()+1)+pad(now.getDate())+"_"+pad(now.getHours())+pad(now.getMinutes());
+
   a.href=url;
   a.download=`RiverDEM_검증결과_${stamp}.csv`;
   document.body.appendChild(a);
@@ -866,6 +1483,11 @@ window.exportValidationCsv=exportValidationCsv;
 window.clearCurrentValidationGroup=clearCurrentValidationGroup;
 window.deleteValidationPoint=deleteValidationPoint;
 
+const validationModeEl=document.getElementById("validationMode");
+if(validationModeEl){
+  validationModeEl.addEventListener("change",updateValidationModeUi);
+}
+
 const validationStandardEl=document.getElementById("validationStandard");
 if(validationStandardEl){
   validationStandardEl.addEventListener("change",()=>{updateValidationStats();renderValidationList();renderValidationMarkers();});
@@ -879,6 +1501,8 @@ if(vworldBtn){
   });
 }
 initMap();
+updateValidationTarget();
+updateValidationModeUi();
 </script>
 </body>
 </html>
