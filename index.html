@@ -2924,6 +2924,35 @@ function checkpointPopupHtml(cp){
   return lines.join("<br>");
 }
 
+
+function bindCheckpointSectionClick(marker,cp){
+  if(!marker)return;
+
+  marker.on("click",async e=>{
+    if(measureMode!=="section")return;
+
+    // 체크포인트 마커가 지도 click 이벤트를 가로채므로
+    // XY 단면 모드에서는 마커 자체를 단면 중심점으로 사용한다.
+    if(e?.originalEvent)L.DomEvent.stopPropagation(e.originalEvent);
+
+    try{
+      marker.closePopup();
+    }catch(_){}
+
+    const ll=marker.getLatLng
+      ?marker.getLatLng()
+      :L.latLng(Number(cp?.lat),Number(cp?.lon));
+
+    if(
+      ll &&
+      Number.isFinite(Number(ll.lat)) &&
+      Number.isFinite(Number(ll.lng))
+    ){
+      await analyzeXYSectionAt(ll);
+    }
+  });
+}
+
 async function addCheckpointAt(latlng){
   const number=checkpointSeq++;
   const name=`CP-${String(number).padStart(3,"0")}`;
@@ -2970,6 +2999,7 @@ async function addCheckpointAt(latlng){
 
   const cpMarker=L.marker([cp.lat,cp.lon],{icon});
   cpMarker.bindPopup(checkpointPopupHtml(cp));
+  bindCheckpointSectionClick(cpMarker,cp);
   cpMarker.addTo(checkpointLayerGroup);
 
   checkpointLayers.set(id,cpMarker);
@@ -4567,6 +4597,7 @@ function restoreCheckpointLayers(){
 
     const layer=L.marker([lat,lon],{icon});
     layer.bindPopup(checkpointPopupHtml(cp));
+    bindCheckpointSectionClick(layer,cp);
     layer.addTo(checkpointLayerGroup);
     checkpointLayers.set(cp.id,layer);
   });
