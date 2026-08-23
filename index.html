@@ -148,6 +148,29 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .xyCanvas{display:block;width:100%;height:145px}
 .xyCenterIcon{width:26px;height:26px;border-radius:50%;background:#0f766e;border:3px solid #fff;box-shadow:0 3px 10px #0005;color:#fff;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center}
 
+
+.xyLengthInputWrap{display:flex;align-items:center;gap:6px}
+.xyLengthInputWrap input{
+  width:100%;
+  box-sizing:border-box;
+  padding:8px 9px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#0f172a;
+  background:#fff
+}
+.xyLengthUnit{font-size:11px;font-weight:900;color:#475569;white-space:nowrap}
+
+
+.projectBox{margin-top:10px;padding:10px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc}
+.projectActions{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.projectBtn{border:0;border-radius:8px;padding:9px 6px;font-size:11px;font-weight:900;cursor:pointer;background:#0f766e;color:#fff}
+.projectBtn.secondary{background:#475569}
+.projectStatus{margin-top:8px;padding:8px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:800;line-height:1.5;white-space:pre-line;word-break:break-word}
+.projectDemWarn{color:#9a3412}
+
 </style>
 </head>
 <body>
@@ -301,13 +324,20 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div class="xySectionControls">
         <div>
           <div class="label" style="margin-top:0">전체 단면 길이</div>
-          <select id="xySectionLength" onchange="refreshXYSection()">
-            <option value="200">200 m</option>
-            <option value="500">500 m</option>
-            <option value="1000" selected>1,000 m</option>
-            <option value="2000">2,000 m</option>
-            <option value="5000">5,000 m</option>
-          </select>
+          <div class="xyLengthInputWrap">
+            <input
+              id="xySectionLength"
+              type="number"
+              value="500"
+              min="1"
+              step="1"
+              inputmode="decimal"
+              placeholder="예: 500"
+              onchange="refreshXYSection()"
+              onkeydown="if(event.key==='Enter'){this.blur();refreshXYSection();}"
+            >
+            <span class="xyLengthUnit">m</span>
+          </div>
         </div>
         <div>
           <div class="label" style="margin-top:0">샘플값</div>
@@ -331,6 +361,26 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div class="xyCanvasWrap">
         <canvas id="xySectionYCanvas" class="xyCanvas"></canvas>
       </div>
+    </div>
+
+    <hr>
+    <div class="label">프로젝트</div>
+    <div class="projectBox">
+      <div class="help">
+        현재 RiverDEM 작업 상태를 .riverdem 프로젝트 파일로 저장하고 다시 불러옵니다.
+      </div>
+      <div class="projectActions">
+        <button class="projectBtn" onclick="saveRiverDemProject()">프로젝트 저장</button>
+        <button class="projectBtn secondary" onclick="openRiverDemProject()">프로젝트 불러오기</button>
+      </div>
+      <input
+        id="riverDemProjectFile"
+        type="file"
+        accept=".riverdem,.json,application/json"
+        style="display:none"
+        onchange="loadRiverDemProject(event)"
+      >
+      <div id="projectStatus" class="projectStatus">저장된 프로젝트가 없습니다.</div>
     </div>
 
     <hr>
@@ -506,6 +556,13 @@ let xySectionCenter=null;
 let xySectionResult=null;
 let xySectionToken=0;
 let xySectionBusy=false;
+
+// 프로젝트 저장/불러오기
+const RIVERDEM_PROJECT_FORMAT="RiverDEM Project";
+const RIVERDEM_PROJECT_VERSION=1;
+let currentProjectFileName=null;
+let pendingProjectDem=null;
+
 let heatRenderToken=0;
 const VALIDATION_STORAGE_KEY="riverdem_validation_records_v1";
 const RIVER_FAVORITES_KEY="riverdem_favorite_rivers_v1";
@@ -802,6 +859,9 @@ function selectRiver(r,element){
 
 function createRiverRow(r,group,source){
   const d=document.createElement("div");d.className="river";
+  try{
+    if(selectedRiver&&riverKey(selectedRiver)===riverKey(r))d.classList.add("active");
+  }catch(e){}
   const arrow=document.createElement("span");arrow.textContent="›";
   const wrap=document.createElement("span");wrap.className="riverText";
   const name=document.createElement("span");name.className="riverName";name.textContent=String(r[0]);
@@ -1408,6 +1468,24 @@ demFile.addEventListener("change",async e=>{
     updateValidationStats();
     renderValidationList();
     renderValidationMarkers();
+
+    if(pendingProjectDem){
+      const currentMeta=currentProjectDemMetadata();
+
+      if(currentMeta&&sameProjectDem(currentMeta,pendingProjectDem)){
+        const matchedName=pendingProjectDem.fileName;
+        pendingProjectDem=null;
+        updateProjectStatus(
+          `프로젝트: ${currentProjectFileName||"-"}\nDEM: ${matchedName} · 일치`
+        );
+      }else{
+        updateProjectStatus(
+          `프로젝트: ${currentProjectFileName||"-"}\n`+
+          `프로젝트 DEM: ${pendingProjectDem.fileName}\n`+
+          `현재 DEM: ${f.name} · 불일치`
+        );
+      }
+    }
 
     const modeLabel={
       "normal":"일반 DEM / 전체 Raster",
@@ -3098,10 +3176,26 @@ function drawXYSectionMap(result){
 
   if(!result||!xySectionLayerGroup)return;
 
-  const xStart=xyAxisPoint(result.center,"x",-result.plan.half);
-  const xEnd=xyAxisPoint(result.center,"x",result.plan.half);
-  const yStart=xyAxisPoint(result.center,"y",-result.plan.half);
-  const yEnd=xyAxisPoint(result.center,"y",result.plan.half);
+  const xFirst=result.xRows?.[0];
+  const xLast=result.xRows?.[result.xRows.length-1];
+  const yFirst=result.yRows?.[0];
+  const yLast=result.yRows?.[result.yRows.length-1];
+
+  const xStart=(xFirst&&Number.isFinite(Number(xFirst.lat))&&Number.isFinite(Number(xFirst.lon)))
+    ?L.latLng(Number(xFirst.lat),Number(xFirst.lon))
+    :xyAxisPoint(result.center,"x",-result.plan.half);
+
+  const xEnd=(xLast&&Number.isFinite(Number(xLast.lat))&&Number.isFinite(Number(xLast.lon)))
+    ?L.latLng(Number(xLast.lat),Number(xLast.lon))
+    :xyAxisPoint(result.center,"x",result.plan.half);
+
+  const yStart=(yFirst&&Number.isFinite(Number(yFirst.lat))&&Number.isFinite(Number(yFirst.lon)))
+    ?L.latLng(Number(yFirst.lat),Number(yFirst.lon))
+    :xyAxisPoint(result.center,"y",-result.plan.half);
+
+  const yEnd=(yLast&&Number.isFinite(Number(yLast.lat))&&Number.isFinite(Number(yLast.lon)))
+    ?L.latLng(Number(yLast.lat),Number(yLast.lon))
+    :xyAxisPoint(result.center,"y",result.plan.half);
 
   L.polyline([xStart,xEnd],{
     color:"#2563eb",
@@ -3325,7 +3419,11 @@ async function analyzeXYSectionAt(latlng){
   const sampleMode=
     document.getElementById("xySectionSampleMode")?.value||"avg3";
 
-  if(!Number.isFinite(totalLength)||totalLength<=0)return;
+  if(!Number.isFinite(totalLength)||totalLength<=0){
+    const info=document.getElementById("xySectionInfo");
+    if(info)info.innerText="전체 단면 길이는 0보다 큰 숫자로 입력해주세요.";
+    return;
+  }
 
   const token=++xySectionToken;
   xySectionBusy=true;
@@ -3542,6 +3640,597 @@ window.deleteMeasurement=deleteMeasurement;
 window.deleteCheckpoint=deleteCheckpoint;
 
 
+
+function projectFileSafeName(v){
+  return String(v||"RiverDEM")
+    .replace(/[\\/:*?"<>|]+/g,"_")
+    .replace(/\s+/g,"_")
+    .slice(0,100)||"RiverDEM";
+}
+
+function projectSwitchOn(id){
+  return !!document.getElementById(id)?.classList.contains("on");
+}
+
+function setProjectSwitch(id,on){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.classList.toggle("on",!!on);
+}
+
+function currentProjectDemMetadata(){
+  if(!demImage||!demFileRef)return null;
+
+  return {
+    fileName:demFileRef.name||currentDemName(),
+    fileSize:Number(demFileRef.size||0),
+    lastModified:Number(demFileRef.lastModified||0),
+    crs:demCrs||null,
+    crsSource:demCrsSource||null,
+    width:Number(width||0),
+    height:Number(height||0),
+    pixelX:Number(pixelX||0),
+    pixelY:Number(pixelY||0),
+    noData:demNoData,
+    processingMode:demProcessingMode||"none",
+    bounds:{
+      minX:Number(minX||0),
+      maxX:Number(maxX||0),
+      minY:Number(minY||0),
+      maxY:Number(maxY||0)
+    }
+  };
+}
+
+function sameProjectDem(a,b){
+  if(!a||!b)return false;
+
+  if(String(a.fileName||"")!==String(b.fileName||""))return false;
+
+  const as=Number(a.fileSize||0);
+  const bs=Number(b.fileSize||0);
+  if(as>0&&bs>0&&as!==bs)return false;
+
+  const am=Number(a.lastModified||0);
+  const bm=Number(b.lastModified||0);
+  if(am>0&&bm>0&&am!==bm)return false;
+
+  return true;
+}
+
+function serializeXYSectionResult(result){
+  if(!result)return null;
+
+  return {
+    center:[Number(result.center.lat),Number(result.center.lng)],
+    plan:JSON.parse(JSON.stringify(result.plan||{})),
+    sampleMode:result.sampleMode||"avg3",
+    xRows:JSON.parse(JSON.stringify(result.xRows||[])),
+    yRows:JSON.parse(JSON.stringify(result.yRows||[])),
+    xStats:JSON.parse(JSON.stringify(result.xStats||{})),
+    yStats:JSON.parse(JSON.stringify(result.yStats||{})),
+    demFile:result.demFile||null,
+    demCrs:result.demCrs||null,
+    createdAt:result.createdAt||null
+  };
+}
+
+function deserializeXYSectionResult(saved){
+  if(!saved||!Array.isArray(saved.center)||saved.center.length!==2)return null;
+
+  const lat=Number(saved.center[0]);
+  const lng=Number(saved.center[1]);
+  if(!Number.isFinite(lat)||!Number.isFinite(lng))return null;
+
+  return {
+    center:L.latLng(lat,lng),
+    plan:saved.plan&&typeof saved.plan==="object"?saved.plan:{},
+    sampleMode:saved.sampleMode||"avg3",
+    xRows:Array.isArray(saved.xRows)?saved.xRows:[],
+    yRows:Array.isArray(saved.yRows)?saved.yRows:[],
+    xStats:saved.xStats&&typeof saved.xStats==="object"?saved.xStats:xyProfileStats(saved.xRows||[]),
+    yStats:saved.yStats&&typeof saved.yStats==="object"?saved.yStats:xyProfileStats(saved.yRows||[]),
+    demFile:saved.demFile||null,
+    demCrs:saved.demCrs||null,
+    createdAt:saved.createdAt||null
+  };
+}
+
+function buildRiverDemProject(){
+  const center=map?.getCenter?.();
+
+  return {
+    format:RIVERDEM_PROJECT_FORMAT,
+    version:RIVERDEM_PROJECT_VERSION,
+    savedAt:new Date().toISOString(),
+
+    river:selectedRiver
+      ?JSON.parse(JSON.stringify(selectedRiver))
+      :null,
+
+    dem:currentProjectDemMetadata(),
+
+    map:{
+      center:center?[Number(center.lat),Number(center.lng)]:null,
+      zoom:map?.getZoom?.()??null,
+      baseMap:document.getElementById("baseMapSelect")?.value||"vworld-base",
+      coordinateSystem:document.getElementById("epsgSelect")?.value||"EPSG:4326"
+    },
+
+    display:{
+      demVisible:projectSwitchOn("demSw"),
+      demOpacity:Number(document.getElementById("demOpacity")?.value||100),
+      heatVisible:projectSwitchOn("heatSw"),
+      heatMode:document.getElementById("heatMode")?.value||"river",
+      heatOpacity:Number(document.getElementById("heatOpacity")?.value||60),
+      sampleDisplayMode:document.getElementById("sampleDisplayMode")?.value||"avg3",
+      pixelGridVisible:projectSwitchOn("pixelGridSw")
+    },
+
+    measurements:JSON.parse(JSON.stringify(measurements||[])),
+    checkpoints:JSON.parse(JSON.stringify(checkpoints||[])),
+
+    xySection:{
+      length:Number(document.getElementById("xySectionLength")?.value||500),
+      sampleMode:document.getElementById("xySectionSampleMode")?.value||"avg3",
+      result:serializeXYSectionResult(xySectionResult)
+    },
+
+    validation:{
+      mode:document.getElementById("validationMode")?.value||"simulation",
+      standard:document.getElementById("validationStandard")?.value||"other",
+      type:document.getElementById("validationType")?.value||"ground",
+      sampleMode:document.getElementById("validationSampleMode")?.value||"avg3",
+      records:JSON.parse(JSON.stringify(validationRecords||[]))
+    }
+  };
+}
+
+function saveRiverDemProject(){
+  const project=buildRiverDemProject();
+
+  const riverName=project.river?.[0]||"하천미선택";
+  const demBase=project.dem?.fileName
+    ?String(project.dem.fileName).replace(/\.[^.]+$/,"")
+    :"DEM미선택";
+
+  const fileName=
+    projectFileSafeName(`${riverName}_${demBase}`)+".riverdem";
+
+  const blob=new Blob(
+    [JSON.stringify(project,null,2)],
+    {type:"application/json;charset=utf-8"}
+  );
+
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+  currentProjectFileName=fileName;
+  updateProjectStatus(
+    `프로젝트 저장 완료\n${fileName}\n`+
+    `측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개 · `+
+    `XY 단면 ${xySectionResult?"1개":"없음"}`
+  );
+}
+
+function openRiverDemProject(){
+  const input=document.getElementById("riverDemProjectFile");
+  if(!input)return;
+  input.value="";
+  input.click();
+}
+
+function restoreMeasurementLayers(){
+  if(measurementLayerGroup)measurementLayerGroup.clearLayers();
+  measurementLayers.clear();
+
+  measurements.forEach(r=>{
+    const pts=(r.points||[])
+      .filter(p=>Array.isArray(p)&&p.length>=2)
+      .map(p=>L.latLng(Number(p[0]),Number(p[1])))
+      .filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lng));
+
+    if(r.type==="length"&&pts.length>=2){
+      const value=Number.isFinite(Number(r.value))
+        ?Number(r.value)
+        :lengthMeters(pts);
+
+      r.value=value;
+
+      const layer=L.polyline(pts,{
+        color:"#2563eb",
+        weight:4,
+        opacity:.95
+      });
+
+      layer.bindTooltip(formatLength(value),{
+        permanent:true,
+        direction:"center",
+        className:"measureTooltip"
+      });
+
+      layer.addTo(measurementLayerGroup);
+      layer.openTooltip();
+      measurementLayers.set(Number(r.id),layer);
+    }
+
+    if(r.type==="area"&&pts.length>=3){
+      const value=Number.isFinite(Number(r.value))
+        ?Number(r.value)
+        :geodesicArea(pts);
+
+      r.value=value;
+
+      const layer=L.polygon(pts,{
+        color:"#7c3aed",
+        weight:3,
+        fill:true,
+        fillColor:"#8b5cf6",
+        fillOpacity:.16
+      });
+
+      layer.bindTooltip(primaryAreaLabel(value),{
+        permanent:true,
+        direction:"center",
+        className:"measureTooltip"
+      });
+
+      layer.addTo(measurementLayerGroup);
+      layer.openTooltip();
+      measurementLayers.set(Number(r.id),layer);
+    }
+  });
+
+  const maxId=measurements.reduce(
+    (m,r)=>Math.max(m,Number(r.id)||0),
+    0
+  );
+  measurementSeq=maxId+1;
+}
+
+function restoreCheckpointLayers(){
+  if(checkpointLayerGroup)checkpointLayerGroup.clearLayers();
+  checkpointLayers.clear();
+
+  checkpoints.forEach((cp,index)=>{
+    cp.id=Number(cp.id)||index+1;
+    cp.number=Number(cp.number)||cp.id;
+    cp.name=cp.name||`CP-${String(cp.number).padStart(3,"0")}`;
+
+    const lat=Number(cp.lat);
+    const lon=Number(cp.lon);
+    if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+
+    cp.lat=lat;
+    cp.lon=lon;
+
+    const icon=L.divIcon({
+      className:"",
+      html:`<div class="checkpointIcon">${cp.number}</div>`,
+      iconSize:[28,28],
+      iconAnchor:[14,14]
+    });
+
+    const layer=L.marker([lat,lon],{icon});
+    layer.bindPopup(checkpointPopupHtml(cp));
+    layer.addTo(checkpointLayerGroup);
+    checkpointLayers.set(cp.id,layer);
+  });
+
+  const maxNo=checkpoints.reduce(
+    (m,r)=>Math.max(m,Number(r.number)||Number(r.id)||0),
+    0
+  );
+  checkpointSeq=maxNo+1;
+}
+
+function restoreXYSection(savedXY){
+  xySectionToken++;
+  xySectionBusy=false;
+  clearXYSectionLayers();
+
+  const length=Number(savedXY?.length);
+  if(Number.isFinite(length)&&length>0){
+    const input=document.getElementById("xySectionLength");
+    if(input)input.value=String(length);
+  }
+
+  const sampleMode=String(savedXY?.sampleMode||"");
+  const select=document.getElementById("xySectionSampleMode");
+  if(select&&[...select.options].some(o=>o.value===sampleMode)){
+    select.value=sampleMode;
+  }
+
+  const restored=deserializeXYSectionResult(savedXY?.result);
+
+  if(!restored){
+    xySectionCenter=null;
+    xySectionResult=null;
+    updateXYSectionInfo(null);
+    drawEmptyXYSectionCharts();
+    return;
+  }
+
+  xySectionCenter=L.latLng(
+    restored.center.lat,
+    restored.center.lng
+  );
+  xySectionResult=restored;
+
+  drawXYSectionMap(restored);
+  drawXYProfileCanvas("xySectionXCanvas",restored.xRows,"X");
+  drawXYProfileCanvas("xySectionYCanvas",restored.yRows,"Y");
+  updateXYSectionInfo(restored);
+}
+
+function restoreSelectValue(id,value){
+  const el=document.getElementById(id);
+  if(!el||value===null||value===undefined)return false;
+
+  const v=String(value);
+  const exists=[...el.options].some(o=>o.value===v);
+
+  if(!exists)return false;
+  el.value=v;
+  return true;
+}
+
+function updateProjectStatus(message=null){
+  const el=document.getElementById("projectStatus");
+  if(!el)return;
+
+  if(message){
+    el.innerText=message;
+    return;
+  }
+
+  if(!currentProjectFileName){
+    el.innerText="저장된 프로젝트가 없습니다.";
+    return;
+  }
+
+  const lines=[`프로젝트: ${currentProjectFileName}`];
+
+  if(pendingProjectDem){
+    const current=currentProjectDemMetadata();
+
+    if(current&&sameProjectDem(current,pendingProjectDem)){
+      lines.push(`DEM: ${pendingProjectDem.fileName} · 일치`);
+    }else{
+      lines.push(`DEM: ${pendingProjectDem.fileName} · 같은 파일 다시 열기 필요`);
+    }
+  }
+
+  el.innerText=lines.join("\n");
+}
+
+function restoreProjectDisplay(project){
+  restoreSelectValue("baseMapSelect",project.map?.baseMap);
+  setBaseMap();
+
+  restoreSelectValue(
+    "epsgSelect",
+    project.map?.coordinateSystem
+  );
+
+  restoreSelectValue(
+    "heatMode",
+    project.display?.heatMode
+  );
+
+  restoreSelectValue(
+    "sampleDisplayMode",
+    project.display?.sampleDisplayMode
+  );
+
+  const demOpacityValue=Number(project.display?.demOpacity);
+  if(Number.isFinite(demOpacityValue)){
+    const el=document.getElementById("demOpacity");
+    if(el)el.value=String(Math.max(10,Math.min(100,demOpacityValue)));
+  }
+
+  const heatOpacityValue=Number(project.display?.heatOpacity);
+  if(Number.isFinite(heatOpacityValue)){
+    const el=document.getElementById("heatOpacity");
+    if(el)el.value=String(Math.max(10,Math.min(100,heatOpacityValue)));
+  }
+
+  setProjectSwitch(
+    "demSw",
+    project.display?.demVisible!==false
+  );
+
+  setProjectSwitch(
+    "heatSw",
+    project.display?.heatVisible!==false
+  );
+
+  setProjectSwitch(
+    "pixelGridSw",
+    project.display?.pixelGridVisible!==false
+  );
+
+  updateHeatLegend();
+  setOverlayOpacity();
+  updateDisplayedSampleValue();
+
+  if(
+    projectSwitchOn("pixelGridSw")&&
+    lastDemSample
+  ){
+    drawPixelBoundary(lastDemSample.row,lastDemSample.col);
+  }else{
+    clearPixelBoundary();
+  }
+}
+
+async function loadRiverDemProject(event){
+  const file=event?.target?.files?.[0];
+  if(!file)return;
+
+  try{
+    const raw=await file.text();
+    const project=JSON.parse(raw);
+
+    if(project?.format!==RIVERDEM_PROJECT_FORMAT){
+      throw new Error("RiverDEM 프로젝트 파일이 아닙니다.");
+    }
+
+    if(Number(project.version)!==RIVERDEM_PROJECT_VERSION){
+      throw new Error(
+        `지원하지 않는 프로젝트 버전입니다: ${project.version}`
+      );
+    }
+
+    // 측정 모드/작성 중 초안은 종료
+    if(measureMode)deactivateMeasureMode();
+    clearMeasureDraft();
+
+    // 프로젝트가 가리키는 DEM과 현재 DEM이 다르면
+    // 잘못된 DEM으로 분석이 이어지지 않도록 현재 DEM은 비웁니다.
+    const beforeDem=currentProjectDemMetadata();
+    const savedDem=project.dem||null;
+    const keepCurrentDem=
+      !!savedDem&&
+      !!beforeDem&&
+      sameProjectDem(savedDem,beforeDem);
+
+    if(!keepCurrentDem&&demImage){
+      resetDemMemory();
+    }
+
+    currentProjectFileName=file.name;
+    pendingProjectDem=savedDem;
+
+    // 하천
+    selectedRiver=Array.isArray(project.river)
+      ?project.river
+      :null;
+
+    if(selectedRiver){
+      const searchEl=document.getElementById("search");
+      if(searchEl)searchEl.value=String(selectedRiver[0]||"");
+    }
+
+    renderRivers();
+
+    // 지도/표시
+    restoreProjectDisplay(project);
+
+    const center=project.map?.center;
+    const zoom=Number(project.map?.zoom);
+
+    if(
+      Array.isArray(center)&&
+      center.length===2&&
+      Number.isFinite(Number(center[0]))&&
+      Number.isFinite(Number(center[1]))
+    ){
+      map.setView(
+        [Number(center[0]),Number(center[1])],
+        Number.isFinite(zoom)?zoom:map.getZoom()
+      );
+      updateStatus(map.getCenter());
+    }
+
+    // 측정
+    measurements=Array.isArray(project.measurements)
+      ?JSON.parse(JSON.stringify(project.measurements))
+      :[];
+
+    checkpoints=Array.isArray(project.checkpoints)
+      ?JSON.parse(JSON.stringify(project.checkpoints))
+      :[];
+
+    restoreMeasurementLayers();
+    restoreCheckpointLayers();
+    renderMeasurementResults();
+
+    // X/Y 단면
+    restoreXYSection(project.xySection||{});
+
+    // 검증
+    const savedValidation=project.validation||{};
+
+    restoreSelectValue(
+      "validationMode",
+      savedValidation.mode
+    );
+    restoreSelectValue(
+      "validationStandard",
+      savedValidation.standard
+    );
+    restoreSelectValue(
+      "validationType",
+      savedValidation.type
+    );
+    restoreSelectValue(
+      "validationSampleMode",
+      savedValidation.sampleMode
+    );
+
+    validationRecords=Array.isArray(savedValidation.records)
+      ?JSON.parse(JSON.stringify(savedValidation.records))
+      :[];
+
+    saveValidationRecords();
+
+    updateValidationTarget();
+    updateValidationModeUi();
+    updateValidationStats();
+    renderValidationList();
+    renderValidationMarkers();
+
+    // 저장 당시 DEM이 이미 현재 열려 있으면 pending 해제
+    const currentAfter=currentProjectDemMetadata();
+    if(
+      pendingProjectDem&&
+      currentAfter&&
+      sameProjectDem(pendingProjectDem,currentAfter)
+    ){
+      pendingProjectDem=null;
+    }
+
+    const demLine=savedDem
+      ?(
+        keepCurrentDem
+          ?`DEM: ${savedDem.fileName} · 현재 열린 파일과 일치`
+          :`DEM: ${savedDem.fileName} · 같은 DEM 파일을 다시 열어주세요.`
+      )
+      :"DEM: 저장된 파일 없음";
+
+    updateProjectStatus(
+      `프로젝트 불러오기 완료\n${file.name}\n`+
+      `${demLine}\n`+
+      `측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개 · `+
+      `XY 단면 ${xySectionResult?"복원":"없음"}`
+    );
+
+    log.innerText=
+      `프로젝트 불러오기 완료\n`+
+      `파일: ${file.name}\n`+
+      `하천: ${currentRiverName()}\n`+
+      `DEM: ${savedDem?.fileName||"미선택"}`;
+  }catch(err){
+    alert("프로젝트 불러오기 실패: "+err.message);
+    updateProjectStatus(
+      "프로젝트 불러오기 실패: "+err.message
+    );
+  }
+}
+
+window.saveRiverDemProject=saveRiverDemProject;
+window.openRiverDemProject=openRiverDemProject;
+window.loadRiverDemProject=loadRiverDemProject;
+
+
 function toggleRight(){
   rightPanel.classList.toggle("collapsed");
   const btn=rightPanel.querySelector(".collapseBtn");
@@ -3596,6 +4285,7 @@ window.addEventListener("resize",()=>{
 
 if(document.getElementById("sampleDisplayMode"))sampleDisplayMode.value="avg3";
 updateHeatLegend();
+updateProjectStatus();
 updateValidationTarget();
 updateValidationModeUi();
 </script>
