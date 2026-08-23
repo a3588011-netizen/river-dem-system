@@ -122,7 +122,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 
 
 .measureBox{margin-top:10px;padding:10px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc}
-.measureButtons{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.measureButtons{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px}
 .measureBtn{border:1px solid #cbd5e1;background:white;color:#334155;border-radius:8px;padding:8px 4px;font-size:11px;font-weight:900;cursor:pointer}
 .measureBtn:hover,.measureBtn.active{background:#2563eb;border-color:#2563eb;color:white}
 .measureActions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}
@@ -138,6 +138,15 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .measureTooltip{background:#111827!important;color:#fff!important;border:0!important;border-radius:7px!important;box-shadow:0 4px 14px #0003!important;font-weight:900!important}
 .measureTooltip:before{display:none!important}
 .checkpointIcon{width:28px;height:28px;border-radius:50%;background:#2563eb;border:3px solid white;box-shadow:0 3px 10px #0005;color:white;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center}
+
+
+.xySectionBox{margin-top:10px;padding:10px;border:1px solid #dbe3ef;border-radius:10px;background:#f8fafc}
+.xySectionControls{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.xySectionInfo{margin-top:8px;padding:8px;border-radius:8px;background:#ecfeff;color:#155e75;font-size:11px;font-weight:800;line-height:1.5;white-space:pre-line}
+.xyChartTitle{margin-top:9px;font-size:11px;font-weight:900;color:#0f172a}
+.xyCanvasWrap{margin-top:4px;border:1px solid #dbe3ef;border-radius:8px;background:#fff;padding:5px}
+.xyCanvas{display:block;width:100%;height:145px}
+.xyCenterIcon{width:26px;height:26px;border-radius:50%;background:#0f766e;border:3px solid #fff;box-shadow:0 3px 10px #0005;color:#fff;font-size:9px;font-weight:900;display:flex;align-items:center;justify-content:center}
 
 </style>
 </head>
@@ -182,7 +191,8 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
   <div class="tool" id="measureLengthTool" onclick="toggleMeasureMode('length')" title="길이 측정">↔</div>
   <div class="tool" id="measureAreaTool" onclick="toggleMeasureMode('area')" title="면적 측정">▱</div>
   <div class="tool" id="measureCheckpointTool" onclick="toggleMeasureMode('checkpoint')" title="체크포인트">●</div>
-  <div class="tool" onclick="clearAllMeasurements()" title="측정/체크포인트 전체 삭제">×</div>
+  <div class="tool" id="measureSectionTool" onclick="toggleMeasureMode('section')" title="X/Y 단면 분석">XY</div>
+  <div class="tool" onclick="clearAllMeasurements()" title="측정/체크포인트/단면 전체 삭제">×</div>
 </div>
 
 <div class="panel right" id="rightPanel">
@@ -266,6 +276,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
         <button id="measureLengthBtn" class="measureBtn" onclick="toggleMeasureMode('length')">↔ 길이</button>
         <button id="measureAreaBtn" class="measureBtn" onclick="toggleMeasureMode('area')">▱ 면적</button>
         <button id="measureCheckpointBtn" class="measureBtn" onclick="toggleMeasureMode('checkpoint')">● 체크포인트</button>
+        <button id="measureSectionBtn" class="measureBtn" onclick="toggleMeasureMode('section')">XY 단면</button>
       </div>
 
       <div class="measureActions">
@@ -277,6 +288,48 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div id="measureLive" class="measureLive">-</div>
       <div id="measureList" class="measureList">
         <div class="help" style="padding-top:8px">저장된 측정 결과가 없습니다.</div>
+      </div>
+    </div>
+
+    <div class="xySectionBox">
+      <div class="label" style="margin-top:0">X / Y 단면 분석</div>
+      <div class="help">
+        XY 단면 모드에서 지도 한 점을 클릭하면 해당 지점을 중심으로 횡단면 X와 종단면 Y를 동시에 계산합니다.
+        현재 X는 서↔동, Y는 남↕북 기준입니다.
+      </div>
+
+      <div class="xySectionControls">
+        <div>
+          <div class="label" style="margin-top:0">전체 단면 길이</div>
+          <select id="xySectionLength" onchange="refreshXYSection()">
+            <option value="200">200 m</option>
+            <option value="500">500 m</option>
+            <option value="1000" selected>1,000 m</option>
+            <option value="2000">2,000 m</option>
+            <option value="5000">5,000 m</option>
+          </select>
+        </div>
+        <div>
+          <div class="label" style="margin-top:0">샘플값</div>
+          <select id="xySectionSampleMode" onchange="refreshXYSection()">
+            <option value="avg3" selected>3×3 평균</option>
+            <option value="cell">단일 셀</option>
+            <option value="avg5">5×5 평균</option>
+            <option value="bilinear">쌍선형 보간</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="xySectionInfo" class="xySectionInfo">지도에서 분석 지점을 선택하세요.</div>
+
+      <div class="xyChartTitle">횡단면 X · 서 ← 0 → 동</div>
+      <div class="xyCanvasWrap">
+        <canvas id="xySectionXCanvas" class="xyCanvas"></canvas>
+      </div>
+
+      <div class="xyChartTitle">종단면 Y · 남 ← 0 → 북</div>
+      <div class="xyCanvasWrap">
+        <canvas id="xySectionYCanvas" class="xyCanvas"></canvas>
       </div>
     </div>
 
@@ -446,6 +499,13 @@ let measurementLayers=new Map();
 let checkpointLayers=new Map();
 let measurementSeq=1;
 let checkpointSeq=1;
+
+// X/Y 단면 분석
+let xySectionLayerGroup=null;
+let xySectionCenter=null;
+let xySectionResult=null;
+let xySectionToken=0;
+let xySectionBusy=false;
 let heatRenderToken=0;
 const VALIDATION_STORAGE_KEY="riverdem_validation_records_v1";
 const RIVER_FAVORITES_KEY="riverdem_favorite_rivers_v1";
@@ -493,6 +553,7 @@ function initMap(){
 
   measurementLayerGroup=L.layerGroup().addTo(map);
   checkpointLayerGroup=L.layerGroup().addTo(map);
+  xySectionLayerGroup=L.layerGroup().addTo(map);
   validationLayer=L.layerGroup().addTo(map);
   loadValidationRecords();
   loadFavoriteRivers();
@@ -2453,7 +2514,8 @@ function measureModeLabel(mode){
   return {
     length:"길이 측정",
     area:"면적 측정",
-    checkpoint:"체크포인트"
+    checkpoint:"체크포인트",
+    section:"X/Y 단면 분석"
   }[mode]||"측정";
 }
 
@@ -2461,7 +2523,8 @@ function syncMeasureModeUi(){
   const ids={
     length:["measureLengthTool","measureLengthBtn"],
     area:["measureAreaTool","measureAreaBtn"],
-    checkpoint:["measureCheckpointTool","measureCheckpointBtn"]
+    checkpoint:["measureCheckpointTool","measureCheckpointBtn"],
+    section:["measureSectionTool","measureSectionBtn"]
   };
 
   Object.entries(ids).forEach(([mode,list])=>{
@@ -2506,6 +2569,16 @@ function toggleMeasureMode(mode){
     return;
   }
 
+  if(mode==="section"&&!demImage){
+    alert("X/Y 단면 분석은 DEM을 먼저 열어야 합니다.");
+    return;
+  }
+
+  if(xySectionBusy){
+    alert("현재 단면을 계산 중입니다.");
+    return;
+  }
+
   clearMeasureDraft();
   measureMode=mode;
   syncMeasureModeUi();
@@ -2517,12 +2590,15 @@ function toggleMeasureMode(mode){
     status.innerText="길이 측정 모드 ON\n지도에서 점을 순서대로 클릭하세요. 더블클릭 또는 '현재 측정 완료'로 끝냅니다.\n↔ 버튼을 다시 누르면 모드가 취소됩니다.";
   }else if(mode==="area"){
     status.innerText="면적 측정 모드 ON\n경계점을 순서대로 클릭하세요. 3점 이상에서 더블클릭 또는 '현재 측정 완료'로 끝냅니다.\n▱ 버튼을 다시 누르면 모드가 취소됩니다.";
-  }else{
+  }else if(mode==="checkpoint"){
     status.innerText="체크포인트 모드 ON\n지도를 클릭할 때마다 번호 체크포인트가 추가됩니다.\n● 버튼을 다시 누르면 모드가 취소됩니다.";
+  }else{
+    status.innerText="X/Y 단면 분석 모드 ON\n지도에서 한 점을 클릭하면 X 횡단면과 Y 종단면을 동시에 계산합니다.\nXY 버튼을 다시 누르면 모드가 취소됩니다.";
   }
 }
 
 function deactivateMeasureMode(){
+  if(measureMode==="section")xySectionToken++;
   clearMeasureDraft();
   measureMode=null;
   syncMeasureModeUi();
@@ -2631,6 +2707,11 @@ async function handleMeasurementMapClick(latlng){
 
   if(measureMode==="checkpoint"){
     await addCheckpointAt(latlng);
+    return;
+  }
+
+  if(measureMode==="section"){
+    await analyzeXYSectionAt(latlng);
     return;
   }
 
@@ -2823,6 +2904,532 @@ async function addCheckpointAt(latlng){
   }
 }
 
+
+function xySectionSampleValue(d,mode){
+  if(!d)return null;
+
+  let v=null;
+  if(mode==="cell")v=d.z;
+  else if(mode==="avg3")v=d.st3?.avg;
+  else if(mode==="avg5")v=d.st5?.avg;
+  else if(mode==="bilinear")v=d.bilinear;
+
+  v=Number(v);
+  return Number.isFinite(v)?v:null;
+}
+
+function xySectionProjectedMeterMode(){
+  return demCrs && demCrs!=="EPSG:4326";
+}
+
+function xyDestination(lat,lon,bearingDeg,distanceM){
+  const R=6378137;
+  const br=bearingDeg*Math.PI/180;
+  const phi1=lat*Math.PI/180;
+  const lam1=lon*Math.PI/180;
+  const delta=distanceM/R;
+
+  const sinPhi2=
+    Math.sin(phi1)*Math.cos(delta)+
+    Math.cos(phi1)*Math.sin(delta)*Math.cos(br);
+
+  const phi2=Math.asin(Math.max(-1,Math.min(1,sinPhi2)));
+
+  const y=
+    Math.sin(br)*Math.sin(delta)*Math.cos(phi1);
+
+  const x=
+    Math.cos(delta)-Math.sin(phi1)*Math.sin(phi2);
+
+  const lam2=lam1+Math.atan2(y,x);
+
+  return L.latLng(
+    phi2*180/Math.PI,
+    ((lam2*180/Math.PI+540)%360)-180
+  );
+}
+
+function xyAxisPoint(center,axis,offsetM){
+  if(xySectionProjectedMeterMode()){
+    const native=wgs84ToNative(center.lng,center.lat);
+    const x=native[0]+(axis==="x"?offsetM:0);
+    const y=native[1]+(axis==="y"?offsetM:0);
+    const ll=nativeToWgs84(x,y);
+    return L.latLng(ll[1],ll[0]);
+  }
+
+  if(axis==="x"){
+    return xyDestination(
+      center.lat,
+      center.lng,
+      offsetM>=0?90:270,
+      Math.abs(offsetM)
+    );
+  }
+
+  return xyDestination(
+    center.lat,
+    center.lng,
+    offsetM>=0?0:180,
+    Math.abs(offsetM)
+  );
+}
+
+function xySectionResolutionMeters(lat){
+  const rx=Math.abs(Number(pixelX)||0);
+  const ry=Math.abs(Number(pixelY)||0);
+
+  if(!rx&&!ry)return 10;
+
+  if(demCrs==="EPSG:4326"){
+    const metersPerDegLat=110540;
+    const metersPerDegLon=111320*Math.cos(Number(lat||0)*Math.PI/180);
+    return Math.max(
+      1,
+      Math.max(rx*metersPerDegLon,ry*metersPerDegLat)
+    );
+  }
+
+  return Math.max(1,Math.max(rx,ry));
+}
+
+function xySectionPlan(totalLength,lat){
+  const resolution=xySectionResolutionMeters(lat);
+
+  // 한 셀당 약 2회 표본을 기본으로 하되,
+  // 1 m급 DEM에서도 과도한 읽기가 생기지 않도록 축당 151점으로 제한.
+  const desiredInterval=Math.max(0.5,resolution/2);
+  let count=Math.ceil(totalLength/desiredInterval)+1;
+
+  if(count>151)count=151;
+  if(count<3)count=3;
+
+  // 중심점(offset 0)을 정확히 포함하기 위해 홀수 개 표본 사용.
+  if(count%2===0){
+    count=count<151?count+1:count-1;
+  }
+
+  const interval=totalLength/(count-1);
+
+  return {
+    totalLength,
+    half:totalLength/2,
+    resolution,
+    interval,
+    count
+  };
+}
+
+async function sampleXYAxis(center,axis,plan,mode,token){
+  const rows=[];
+
+  for(let i=0;i<plan.count;i++){
+    if(token!==xySectionToken)return null;
+
+    const offset=
+      -plan.half+
+      (plan.totalLength*i/(plan.count-1));
+
+    const p=xyAxisPoint(center,axis,offset);
+    const d=await readDem(p.lat,p.lng);
+
+    rows.push({
+      index:i,
+      offset,
+      lat:p.lat,
+      lon:p.lng,
+      z:xySectionSampleValue(d,mode),
+      x:d?.x??null,
+      y:d?.y??null,
+      row:d?.r??null,
+      col:d?.c??null
+    });
+
+    if(i%12===0){
+      const info=document.getElementById("xySectionInfo");
+      if(info){
+        const axisName=axis==="x"?"X 횡단면":"Y 종단면";
+        info.innerText=`${axisName} 계산 중... ${i+1}/${plan.count}`;
+      }
+    }
+  }
+
+  return rows;
+}
+
+function xyProfileStats(rows){
+  const valid=rows.filter(r=>Number.isFinite(r.z));
+
+  if(!valid.length){
+    return {
+      validCount:0,
+      min:null,
+      max:null,
+      center:null,
+      relief:null
+    };
+  }
+
+  const zs=valid.map(r=>r.z);
+  const centerRow=rows.reduce((best,r)=>{
+    if(!Number.isFinite(r.z))return best;
+    if(!best)return r;
+    return Math.abs(r.offset)<Math.abs(best.offset)?r:best;
+  },null);
+
+  const min=Math.min(...zs);
+  const max=Math.max(...zs);
+
+  return {
+    validCount:valid.length,
+    min,
+    max,
+    center:centerRow?.z??null,
+    relief:max-min
+  };
+}
+
+function clearXYSectionLayers(){
+  if(xySectionLayerGroup)xySectionLayerGroup.clearLayers();
+}
+
+function drawXYSectionMap(result){
+  clearXYSectionLayers();
+
+  if(!result||!xySectionLayerGroup)return;
+
+  const xStart=xyAxisPoint(result.center,"x",-result.plan.half);
+  const xEnd=xyAxisPoint(result.center,"x",result.plan.half);
+  const yStart=xyAxisPoint(result.center,"y",-result.plan.half);
+  const yEnd=xyAxisPoint(result.center,"y",result.plan.half);
+
+  L.polyline([xStart,xEnd],{
+    color:"#2563eb",
+    weight:4,
+    opacity:.95
+  }).bindTooltip("X 횡단면",{
+    permanent:false,
+    className:"measureTooltip"
+  }).addTo(xySectionLayerGroup);
+
+  L.polyline([yStart,yEnd],{
+    color:"#0f766e",
+    weight:4,
+    opacity:.95
+  }).bindTooltip("Y 종단면",{
+    permanent:false,
+    className:"measureTooltip"
+  }).addTo(xySectionLayerGroup);
+
+  const icon=L.divIcon({
+    className:"",
+    html:'<div class="xyCenterIcon">XY</div>',
+    iconSize:[26,26],
+    iconAnchor:[13,13]
+  });
+
+  L.marker(
+    [result.center.lat,result.center.lng],
+    {icon,interactive:false}
+  ).addTo(xySectionLayerGroup);
+}
+
+function drawXYProfileCanvas(canvasId,rows,axisLabel){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+
+  const parent=canvas.parentElement;
+  const cssWidth=Math.max(260,(parent?.clientWidth||320)-10);
+  const cssHeight=145;
+  const dpr=Math.max(1,window.devicePixelRatio||1);
+
+  canvas.width=Math.round(cssWidth*dpr);
+  canvas.height=Math.round(cssHeight*dpr);
+  canvas.style.width=cssWidth+"px";
+  canvas.style.height=cssHeight+"px";
+
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssWidth,cssHeight);
+
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,cssWidth,cssHeight);
+
+  const left=45;
+  const right=10;
+  const top=10;
+  const bottom=27;
+  const w=cssWidth-left-right;
+  const h=cssHeight-top-bottom;
+
+  ctx.strokeStyle="#cbd5e1";
+  ctx.lineWidth=1;
+  ctx.strokeRect(left,top,w,h);
+
+  const valid=rows?.filter(r=>Number.isFinite(r.z))||[];
+
+  if(valid.length<2){
+    ctx.fillStyle="#64748b";
+    ctx.font="11px sans-serif";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText("유효한 DEM 단면값 없음",left+w/2,top+h/2);
+    return;
+  }
+
+  const minOffset=Math.min(...rows.map(r=>r.offset));
+  const maxOffset=Math.max(...rows.map(r=>r.offset));
+
+  let minZ=Math.min(...valid.map(r=>r.z));
+  let maxZ=Math.max(...valid.map(r=>r.z));
+
+  if(maxZ-minZ<0.01){
+    minZ-=0.5;
+    maxZ+=0.5;
+  }else{
+    const pad=(maxZ-minZ)*0.08;
+    minZ-=pad;
+    maxZ+=pad;
+  }
+
+  const px=offset=>
+    left+
+    ((offset-minOffset)/(maxOffset-minOffset))*w;
+
+  const py=z=>
+    top+h-
+    ((z-minZ)/(maxZ-minZ))*h;
+
+  ctx.font="9px sans-serif";
+  ctx.fillStyle="#475569";
+  ctx.strokeStyle="#e2e8f0";
+  ctx.lineWidth=1;
+
+  for(let i=0;i<=3;i++){
+    const yy=top+h*(i/3);
+    const z=maxZ-(maxZ-minZ)*(i/3);
+
+    ctx.beginPath();
+    ctx.moveTo(left,yy);
+    ctx.lineTo(left+w,yy);
+    ctx.stroke();
+
+    ctx.textAlign="right";
+    ctx.textBaseline="middle";
+    ctx.fillText(z.toFixed(1),left-4,yy);
+  }
+
+  for(let i=0;i<=4;i++){
+    const xx=left+w*(i/4);
+    const offset=minOffset+(maxOffset-minOffset)*(i/4);
+
+    ctx.beginPath();
+    ctx.moveTo(xx,top);
+    ctx.lineTo(xx,top+h);
+    ctx.stroke();
+
+    ctx.textAlign="center";
+    ctx.textBaseline="top";
+    ctx.fillText(
+      Math.abs(offset)>=1000
+        ?`${(offset/1000).toFixed(1)}k`
+        :`${Math.round(offset)}`,
+      xx,
+      top+h+5
+    );
+  }
+
+  // 중심 0m 선
+  if(minOffset<=0&&maxOffset>=0){
+    const centerX=px(0);
+    ctx.save();
+    ctx.strokeStyle="#94a3b8";
+    ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.moveTo(centerX,top);
+    ctx.lineTo(centerX,top+h);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.strokeStyle=axisLabel==="X"?"#2563eb":"#0f766e";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+
+  let started=false;
+
+  for(const r of rows){
+    if(!Number.isFinite(r.z)){
+      started=false;
+      continue;
+    }
+
+    const x=px(r.offset);
+    const y=py(r.z);
+
+    if(!started){
+      ctx.moveTo(x,y);
+      started=true;
+    }else{
+      ctx.lineTo(x,y);
+    }
+  }
+
+  ctx.stroke();
+
+  ctx.fillStyle="#0f172a";
+  ctx.font="9px sans-serif";
+  ctx.textAlign="left";
+  ctx.textBaseline="top";
+  ctx.fillText("고도(m)",3,2);
+
+  ctx.textAlign="right";
+  ctx.fillText("거리(m)",cssWidth-3,cssHeight-11);
+}
+
+function drawEmptyXYSectionCharts(){
+  drawXYProfileCanvas("xySectionXCanvas",[],"X");
+  drawXYProfileCanvas("xySectionYCanvas",[],"Y");
+}
+
+function updateXYSectionInfo(result){
+  const info=document.getElementById("xySectionInfo");
+  if(!info)return;
+
+  if(!result){
+    info.innerText="지도에서 분석 지점을 선택하세요.";
+    return;
+  }
+
+  const x=result.xStats;
+  const y=result.yStats;
+  const modeLabel=sampleModeLabel(result.sampleMode);
+
+  info.innerText=
+    `중심: ${result.center.lng.toFixed(7)}, ${result.center.lat.toFixed(7)}\n`+
+    `길이: ${formatLength(result.plan.totalLength)} · ${modeLabel} · 간격 약 ${result.plan.interval.toFixed(2)} m\n`+
+    `X 횡단면: ${x.validCount}/${result.plan.count}점 · ${x.min===null?"-":x.min.toFixed(2)} ~ ${x.max===null?"-":x.max.toFixed(2)} m\n`+
+    `Y 종단면: ${y.validCount}/${result.plan.count}점 · ${y.min===null?"-":y.min.toFixed(2)} ~ ${y.max===null?"-":y.max.toFixed(2)} m`;
+}
+
+async function analyzeXYSectionAt(latlng){
+  if(!demImage){
+    alert("DEM을 먼저 열어주세요.");
+    return;
+  }
+
+  const center=L.latLng(latlng.lat,latlng.lng);
+  const totalLength=Number(
+    document.getElementById("xySectionLength")?.value||1000
+  );
+  const sampleMode=
+    document.getElementById("xySectionSampleMode")?.value||"avg3";
+
+  if(!Number.isFinite(totalLength)||totalLength<=0)return;
+
+  const token=++xySectionToken;
+  xySectionBusy=true;
+  xySectionCenter=center;
+
+  const plan=xySectionPlan(totalLength,center.lat);
+
+  const info=document.getElementById("xySectionInfo");
+  const status=document.getElementById("measureStatus");
+  const live=document.getElementById("measureLive");
+
+  if(info)info.innerText=`X/Y 단면 계산 준비... 축당 ${plan.count}점`;
+  if(status)status.innerText="X/Y 단면 계산 중...";
+  if(live)live.innerText=`중심점 ${center.lng.toFixed(6)}, ${center.lat.toFixed(6)}`;
+
+  try{
+    // 일반 DEM 상세값 패널도 중심점으로 갱신
+    await samplePoint(center.lat,center.lng);
+
+    if(token!==xySectionToken)return;
+
+    const xRows=await sampleXYAxis(center,"x",plan,sampleMode,token);
+    if(token!==xySectionToken||!xRows)return;
+
+    const yRows=await sampleXYAxis(center,"y",plan,sampleMode,token);
+    if(token!==xySectionToken||!yRows)return;
+
+    const result={
+      center,
+      plan,
+      sampleMode,
+      xRows,
+      yRows,
+      xStats:xyProfileStats(xRows),
+      yStats:xyProfileStats(yRows),
+      demFile:currentDemName(),
+      demCrs:demCrs||null,
+      createdAt:new Date().toISOString()
+    };
+
+    xySectionResult=result;
+
+    drawXYSectionMap(result);
+    drawXYProfileCanvas("xySectionXCanvas",xRows,"X");
+    drawXYProfileCanvas("xySectionYCanvas",yRows,"Y");
+    updateXYSectionInfo(result);
+
+    if(status){
+      status.innerText=
+        `X/Y 단면 완료\n`+
+        `다른 지점을 클릭하면 즉시 새 단면으로 갱신됩니다.\n`+
+        `XY 버튼을 다시 누르면 모드가 종료됩니다.`;
+    }
+
+    if(live){
+      const centerZ=
+        Number.isFinite(result.xStats.center)
+          ?result.xStats.center
+          :result.yStats.center;
+
+      live.innerText=
+        `중심 고도: ${
+          Number.isFinite(centerZ)
+            ?centerZ.toFixed(3)+" m"
+            :"-"
+        }`;
+    }
+  }catch(err){
+    if(token!==xySectionToken)return;
+
+    if(info)info.innerText="X/Y 단면 계산 실패: "+err.message;
+    if(status)status.innerText="X/Y 단면 계산 실패: "+err.message;
+  }finally{
+    if(token===xySectionToken)xySectionBusy=false;
+  }
+}
+
+async function refreshXYSection(){
+  if(!xySectionCenter||!demImage)return;
+
+  const center=L.latLng(
+    xySectionCenter.lat,
+    xySectionCenter.lng
+  );
+
+  await analyzeXYSectionAt(center);
+}
+
+function clearXYSectionAnalysis(){
+  xySectionToken++;
+  xySectionBusy=false;
+  xySectionCenter=null;
+  xySectionResult=null;
+
+  clearXYSectionLayers();
+  updateXYSectionInfo(null);
+  drawEmptyXYSectionCharts();
+}
+
+window.analyzeXYSectionAt=analyzeXYSectionAt;
+window.refreshXYSection=refreshXYSection;
+window.clearXYSectionAnalysis=clearXYSectionAnalysis;
+
+
 function deleteMeasurement(id){
   measurements=measurements.filter(r=>Number(r.id)!==Number(id));
 
@@ -2858,6 +3465,7 @@ function clearAllMeasurements(){
   measurementSeq=1;
   checkpointSeq=1;
 
+  clearXYSectionAnalysis();
   renderMeasurementResults();
 
   const status=document.getElementById("measureStatus");
@@ -2975,6 +3583,17 @@ if(vworldBtn){
 initMap();
 syncMeasureModeUi();
 renderMeasurementResults();
+drawEmptyXYSectionCharts();
+
+window.addEventListener("resize",()=>{
+  if(xySectionResult){
+    drawXYProfileCanvas("xySectionXCanvas",xySectionResult.xRows,"X");
+    drawXYProfileCanvas("xySectionYCanvas",xySectionResult.yRows,"Y");
+  }else{
+    drawEmptyXYSectionCharts();
+  }
+});
+
 if(document.getElementById("sampleDisplayMode"))sampleDisplayMode.value="avg3";
 updateHeatLegend();
 updateValidationTarget();
