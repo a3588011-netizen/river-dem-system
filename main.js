@@ -131,7 +131,7 @@ function createWindow(){
       {label:'종료',click(){mainWindow.close()}}
     ]},
     {label:'Edit',submenu:[
-      {label:'VWorld API Key 설정',click(){mainWindow.webContents.executeJavaScript('openVWorldKeyDialog()')}},
+      {label:'VWorld API Key 설정',click(){mainWindow.webContents.executeJavaScript('setVWorldKey()')}},
       {type:'separator'},
       {label:'설정 초기화',click(){mainWindow.webContents.executeJavaScript('localStorage.clear();location.reload();')}}
     ]},

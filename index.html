@@ -171,6 +171,9 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
 .projectStatus{margin-top:8px;padding:8px;border-radius:8px;background:#f1f5f9;color:#334155;font-size:11px;font-weight:800;line-height:1.5;white-space:pre-line;word-break:break-word}
 .projectDemWarn{color:#9a3412}
 
+
+.projectBtn.excel{grid-column:1/-1;background:#166534}
+
 </style>
 </head>
 <body>
@@ -372,6 +375,7 @@ hr{border:0;border-top:1px solid #e5e7eb;margin:16px -18px}
       <div class="projectActions">
         <button class="projectBtn" onclick="saveRiverDemProject()">프로젝트 저장</button>
         <button class="projectBtn secondary" onclick="openRiverDemProject()">프로젝트 불러오기</button>
+        <button class="projectBtn excel" onclick="exportRiverDemAnalysisExcel()">분석 결과 Excel 내보내기</button>
       </div>
       <input
         id="riverDemProjectFile"
@@ -3639,6 +3643,649 @@ window.clearAllMeasurements=clearAllMeasurements;
 window.deleteMeasurement=deleteMeasurement;
 window.deleteCheckpoint=deleteCheckpoint;
 
+
+
+
+// ============================================================
+// RiverDEM Excel (.xlsx) 내보내기
+// 외부 라이브러리 없이 Office Open XML + ZIP(Store) 방식으로 생성
+// ============================================================
+function excelXmlEscape(v){
+  return String(v??"")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&apos;");
+}
+
+function excelSafeSheetName(v,used){
+  let name=String(v||"Sheet")
+    .replace(/[\\/*?:[\]]/g," ")
+    .trim()
+    .slice(0,31)||"Sheet";
+
+  const base=name;
+  let n=2;
+
+  while(used.has(name)){
+    const suffix=` ${n++}`;
+    name=(base.slice(0,31-suffix.length)+suffix);
+  }
+
+  used.add(name);
+  return name;
+}
+
+function excelColumnName(index){
+  let n=index+1;
+  let s="";
+
+  while(n>0){
+    const r=(n-1)%26;
+    s=String.fromCharCode(65+r)+s;
+    n=Math.floor((n-1)/26);
+  }
+
+  return s;
+}
+
+function excelTextWidth(v){
+  const s=String(v??"");
+  let width=0;
+
+  for(const ch of s){
+    width+=ch.charCodeAt(0)>255?2:1;
+  }
+
+  return width;
+}
+
+function excelCellXml(value,rowIndex,colIndex,styleIndex){
+  const ref=excelColumnName(colIndex)+(rowIndex+1);
+  const s=styleIndex?` s="${styleIndex}"`:"";
+
+  if(value===null||value===undefined||value===""){
+    return `<c r="${ref}"${s}/>`;
+  }
+
+  if(typeof value==="number"&&Number.isFinite(value)){
+    return `<c r="${ref}"${s}><v>${value}</v></c>`;
+  }
+
+  if(typeof value==="boolean"){
+    return `<c r="${ref}" t="b"${s}><v>${value?1:0}</v></c>`;
+  }
+
+  return `<c r="${ref}" t="inlineStr"${s}><is><t xml:space="preserve">${excelXmlEscape(value)}</t></is></c>`;
+}
+
+function excelWorksheetXml(rows){
+  const safeRows=Array.isArray(rows)&&rows.length?rows:[["항목","값"]];
+  const colCount=Math.max(1,...safeRows.map(r=>Array.isArray(r)?r.length:0));
+  const widths=[];
+
+  for(let c=0;c<colCount;c++){
+    let max=8;
+
+    for(let r=0;r<safeRows.length;r++){
+      const row=Array.isArray(safeRows[r])?safeRows[r]:[];
+      max=Math.max(max,excelTextWidth(row[c]));
+    }
+
+    widths.push(Math.min(36,Math.max(8,max+2)));
+  }
+
+  const cols=widths.map((w,i)=>
+    `<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`
+  ).join("");
+
+  const body=safeRows.map((row,r)=>{
+    const cells=(Array.isArray(row)?row:[]).map((v,c)=>{
+      const style=r===0?1:2;
+      return excelCellXml(v,r,c,style);
+    }).join("");
+
+    return `<row r="${r+1}">${cells}</row>`;
+  }).join("");
+
+  const lastCell=excelColumnName(colCount-1)+safeRows.length;
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+      `<sheetViews><sheetView workbookViewId="0">`+
+        `<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>`+
+      `</sheetView></sheetViews>`+
+      `<cols>${cols}</cols>`+
+      `<sheetData>${body}</sheetData>`+
+      `<autoFilter ref="A1:${lastCell}"/>`+
+    `</worksheet>`;
+}
+
+function excelStylesXml(){
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+  `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`+
+    `<fonts count="2">`+
+      `<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>`+
+      `<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Calibri"/><family val="2"/></font>`+
+    `</fonts>`+
+    `<fills count="3">`+
+      `<fill><patternFill patternType="none"/></fill>`+
+      `<fill><patternFill patternType="gray125"/></fill>`+
+      `<fill><patternFill patternType="solid"><fgColor rgb="FF0F766E"/><bgColor indexed="64"/></patternFill></fill>`+
+    `</fills>`+
+    `<borders count="2">`+
+      `<border><left/><right/><top/><bottom/><diagonal/></border>`+
+      `<border>`+
+        `<left style="thin"><color rgb="FFD7DEE8"/></left>`+
+        `<right style="thin"><color rgb="FFD7DEE8"/></right>`+
+        `<top style="thin"><color rgb="FFD7DEE8"/></top>`+
+        `<bottom style="thin"><color rgb="FFD7DEE8"/></bottom>`+
+        `<diagonal/>`+
+      `</border>`+
+    `</borders>`+
+    `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`+
+    `<cellXfs count="3">`+
+      `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`+
+      `<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>`+
+      `<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>`+
+    `</cellXfs>`+
+    `<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>`+
+  `</styleSheet>`;
+}
+
+function excelCrc32Table(){
+  if(window.__riverDemCrc32Table)return window.__riverDemCrc32Table;
+
+  const table=new Uint32Array(256);
+
+  for(let n=0;n<256;n++){
+    let c=n;
+
+    for(let k=0;k<8;k++){
+      c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);
+    }
+
+    table[n]=c>>>0;
+  }
+
+  window.__riverDemCrc32Table=table;
+  return table;
+}
+
+function excelCrc32(bytes){
+  const table=excelCrc32Table();
+  let crc=0xFFFFFFFF;
+
+  for(let i=0;i<bytes.length;i++){
+    crc=table[(crc^bytes[i])&0xFF]^(crc>>>8);
+  }
+
+  return (crc^0xFFFFFFFF)>>>0;
+}
+
+function excelU16(v){
+  const a=new Uint8Array(2);
+  new DataView(a.buffer).setUint16(0,v,true);
+  return a;
+}
+
+function excelU32(v){
+  const a=new Uint8Array(4);
+  new DataView(a.buffer).setUint32(0,v>>>0,true);
+  return a;
+}
+
+function excelConcat(parts){
+  const total=parts.reduce((sum,p)=>sum+p.length,0);
+  const out=new Uint8Array(total);
+  let offset=0;
+
+  for(const p of parts){
+    out.set(p,offset);
+    offset+=p.length;
+  }
+
+  return out;
+}
+
+function excelZipStore(files){
+  const encoder=new TextEncoder();
+  const locals=[];
+  const centrals=[];
+  let offset=0;
+
+  // 1980-01-01 00:00 (DOS)
+  const dosTime=0;
+  const dosDate=33;
+
+  for(const file of files){
+    const nameBytes=encoder.encode(file.name);
+    const dataBytes=typeof file.data==="string"
+      ?encoder.encode(file.data)
+      :file.data;
+
+    const crc=excelCrc32(dataBytes);
+    const size=dataBytes.length;
+
+    const local=excelConcat([
+      excelU32(0x04034b50),
+      excelU16(20),
+      excelU16(0x0800),
+      excelU16(0),
+      excelU16(dosTime),
+      excelU16(dosDate),
+      excelU32(crc),
+      excelU32(size),
+      excelU32(size),
+      excelU16(nameBytes.length),
+      excelU16(0),
+      nameBytes,
+      dataBytes
+    ]);
+
+    locals.push(local);
+
+    const central=excelConcat([
+      excelU32(0x02014b50),
+      excelU16(20),
+      excelU16(20),
+      excelU16(0x0800),
+      excelU16(0),
+      excelU16(dosTime),
+      excelU16(dosDate),
+      excelU32(crc),
+      excelU32(size),
+      excelU32(size),
+      excelU16(nameBytes.length),
+      excelU16(0),
+      excelU16(0),
+      excelU16(0),
+      excelU16(0),
+      excelU32(0),
+      excelU32(offset),
+      nameBytes
+    ]);
+
+    centrals.push(central);
+    offset+=local.length;
+  }
+
+  const centralBytes=excelConcat(centrals);
+  const localBytes=excelConcat(locals);
+
+  const eocd=excelConcat([
+    excelU32(0x06054b50),
+    excelU16(0),
+    excelU16(0),
+    excelU16(files.length),
+    excelU16(files.length),
+    excelU32(centralBytes.length),
+    excelU32(localBytes.length),
+    excelU16(0)
+  ]);
+
+  return excelConcat([localBytes,centralBytes,eocd]);
+}
+
+function buildRiverDemXlsxBytes(sheetDefs){
+  const used=new Set();
+
+  const sheets=sheetDefs.map((sheet,index)=>({
+    name:excelSafeSheetName(sheet.name,used),
+    rows:Array.isArray(sheet.rows)?sheet.rows:[]
+  }));
+
+  const workbookSheets=sheets.map((s,i)=>
+    `<sheet name="${excelXmlEscape(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`
+  ).join("");
+
+  const workbookXml=
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" `+
+    `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`+
+      `<sheets>${workbookSheets}</sheets>`+
+    `</workbook>`;
+
+  const rels=sheets.map((s,i)=>
+    `<Relationship Id="rId${i+1}" `+
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" `+
+    `Target="worksheets/sheet${i+1}.xml"/>`
+  ).join("");
+
+  const stylesRelId=sheets.length+1;
+
+  const workbookRels=
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+      rels+
+      `<Relationship Id="rId${stylesRelId}" `+
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" `+
+      `Target="styles.xml"/>`+
+    `</Relationships>`;
+
+  const overrides=sheets.map((s,i)=>
+    `<Override PartName="/xl/worksheets/sheet${i+1}.xml" `+
+    `ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+  ).join("");
+
+  const contentTypes=
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`+
+      `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`+
+      `<Default Extension="xml" ContentType="application/xml"/>`+
+      `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`+
+      `<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`+
+      overrides+
+    `</Types>`;
+
+  const rootRels=
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`+
+      `<Relationship Id="rId1" `+
+      `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" `+
+      `Target="xl/workbook.xml"/>`+
+    `</Relationships>`;
+
+  const files=[
+    {name:"[Content_Types].xml",data:contentTypes},
+    {name:"_rels/.rels",data:rootRels},
+    {name:"xl/workbook.xml",data:workbookXml},
+    {name:"xl/_rels/workbook.xml.rels",data:workbookRels},
+    {name:"xl/styles.xml",data:excelStylesXml()}
+  ];
+
+  sheets.forEach((s,i)=>{
+    files.push({
+      name:`xl/worksheets/sheet${i+1}.xml`,
+      data:excelWorksheetXml(s.rows)
+    });
+  });
+
+  return excelZipStore(files);
+}
+
+function excelNum(v){
+  const n=Number(v);
+  return Number.isFinite(n)?n:"";
+}
+
+function excelDate(v){
+  if(!v)return "";
+  const d=new Date(v);
+  return Number.isFinite(d.getTime())
+    ?d.toLocaleString("ko-KR")
+    :String(v);
+}
+
+function buildRiverDemAnalysisSheets(){
+  const project=buildRiverDemProject();
+  const river=selectedRiver;
+  const dem=project.dem||pendingProjectDem||null;
+  const mapCenter=map?.getCenter?.();
+
+  const riverName=river?.[0]||"미선택";
+  const demName=dem?.fileName||xySectionResult?.demFile||"미선택";
+
+  const summary=[
+    ["항목","값"],
+    ["하천명",riverName],
+    ["지역",river?riverRegion(river):""],
+    ["시·군",river?riverCity(river):""],
+    ["하천등급",river?riverGrade(river):""],
+    ["수계",river?riverBasin(river):""],
+    ["하천코드",river?riverCode(river):""],
+    ["DEM 파일",demName],
+    ["DEM CRS",dem?.crs||xySectionResult?.demCrs||""],
+    ["DEM 해상도 X",dem?Math.abs(excelNum(dem.pixelX)):""],
+    ["DEM 해상도 Y",dem?Math.abs(excelNum(dem.pixelY)):""],
+    ["DEM 너비(px)",dem?.width??""],
+    ["DEM 높이(px)",dem?.height??""],
+    ["지도 중심 위도",mapCenter?mapCenter.lat:""],
+    ["지도 중심 경도",mapCenter?mapCenter.lng:""],
+    ["지도 줌",map?.getZoom?.()??""],
+    ["길이/면적 측정 수",measurements.length],
+    ["체크포인트 수",checkpoints.length],
+    ["X/Y 단면",xySectionResult?"있음":"없음"],
+    ["검증 기록 수",validationRecords.filter(r=>!river||r.river===riverName).length],
+    ["프로젝트 파일",currentProjectFileName||""],
+    ["Excel 생성일",new Date().toLocaleString("ko-KR")]
+  ];
+
+  const measurementRows=[
+    ["ID","종류","값","단위","점 개수","생성일"]
+  ];
+
+  const measurementPointRows=[
+    ["측정 ID","종류","점 번호","위도","경도"]
+  ];
+
+  measurements.forEach(m=>{
+    const type=m.type==="area"?"면적":"길이";
+    const unit=m.type==="area"?"m²":"m";
+
+    measurementRows.push([
+      m.id??"",
+      type,
+      excelNum(m.value),
+      unit,
+      Array.isArray(m.points)?m.points.length:0,
+      excelDate(m.createdAt)
+    ]);
+
+    (m.points||[]).forEach((p,index)=>{
+      measurementPointRows.push([
+        m.id??"",
+        type,
+        index+1,
+        excelNum(p?.[0]),
+        excelNum(p?.[1])
+      ]);
+    });
+  });
+
+  const checkpointRows=[
+    [
+      "번호","이름","위도","경도",
+      "DEM X","DEM Y","DEM CRS","DEM 파일",
+      "단일 셀 Z(m)","3×3 평균(m)","5×5 평균(m)","쌍선형 보간(m)",
+      "Row","Col","생성일"
+    ]
+  ];
+
+  checkpoints.forEach(cp=>{
+    checkpointRows.push([
+      cp.number??cp.id??"",
+      cp.name||"",
+      excelNum(cp.lat),
+      excelNum(cp.lon),
+      excelNum(cp.dem?.x),
+      excelNum(cp.dem?.y),
+      cp.dem?.crs||"",
+      cp.dem?.demFile||demName,
+      excelNum(cp.dem?.z),
+      excelNum(cp.dem?.avg3),
+      excelNum(cp.dem?.avg5),
+      excelNum(cp.dem?.bilinear),
+      cp.dem?.row??"",
+      cp.dem?.col??"",
+      excelDate(cp.createdAt)
+    ]);
+  });
+
+  const xySummary=[
+    ["항목","값"]
+  ];
+
+  const xyXRows=[
+    ["번호","중심 기준 거리(m)","고도(m)","위도","경도","DEM X","DEM Y","Row","Col"]
+  ];
+
+  const xyYRows=[
+    ["번호","중심 기준 거리(m)","고도(m)","위도","경도","DEM X","DEM Y","Row","Col"]
+  ];
+
+  if(xySectionResult){
+    const r=xySectionResult;
+    const x=r.xStats||xyProfileStats(r.xRows||[]);
+    const y=r.yStats||xyProfileStats(r.yRows||[]);
+
+    xySummary.push(
+      ["중심 위도",excelNum(r.center?.lat)],
+      ["중심 경도",excelNum(r.center?.lng)],
+      ["전체 단면 길이(m)",excelNum(r.plan?.totalLength)],
+      ["샘플 방식",sampleModeLabel(r.sampleMode)],
+      ["샘플 간격(m)",excelNum(r.plan?.interval)],
+      ["DEM 해상도(m)",excelNum(r.plan?.resolution)],
+      ["X 유효 표본 수",x.validCount??""],
+      ["X 최저고도(m)",excelNum(x.min)],
+      ["X 최고고도(m)",excelNum(x.max)],
+      ["X 고도차(m)",excelNum(x.relief)],
+      ["X 중심고도(m)",excelNum(x.center)],
+      ["Y 유효 표본 수",y.validCount??""],
+      ["Y 최저고도(m)",excelNum(y.min)],
+      ["Y 최고고도(m)",excelNum(y.max)],
+      ["Y 고도차(m)",excelNum(y.relief)],
+      ["Y 중심고도(m)",excelNum(y.center)],
+      ["DEM 파일",r.demFile||demName],
+      ["DEM CRS",r.demCrs||dem?.crs||""],
+      ["생성일",excelDate(r.createdAt)]
+    );
+
+    (r.xRows||[]).forEach((s,index)=>{
+      xyXRows.push([
+        index+1,
+        excelNum(s.offset),
+        excelNum(s.z),
+        excelNum(s.lat),
+        excelNum(s.lon),
+        excelNum(s.x),
+        excelNum(s.y),
+        s.row??"",
+        s.col??""
+      ]);
+    });
+
+    (r.yRows||[]).forEach((s,index)=>{
+      xyYRows.push([
+        index+1,
+        excelNum(s.offset),
+        excelNum(s.z),
+        excelNum(s.lat),
+        excelNum(s.lon),
+        excelNum(s.x),
+        excelNum(s.y),
+        s.row??"",
+        s.col??""
+      ]);
+    });
+  }else{
+    xySummary.push(["결과","X/Y 단면 분석 결과 없음"]);
+  }
+
+  const validationRows=[
+    [
+      "ID","모드","하천","DEM","기준","구분","공식판정 포함",
+      "샘플 방식","위도","경도","DEM X","DEM Y","Row","Col",
+      "실측 Z(m)","DEM Z(m)","오차(m)","절대오차(m)",
+      "해상도(m)","CRS","메모","생성일"
+    ]
+  ];
+
+  validationRecords
+    .filter(r=>!river||r.river===riverName)
+    .forEach(r=>{
+      validationRows.push([
+        r.id??"",
+        r.mode==="real"?"독립 실측 검증":"공식 DEM 분석",
+        r.river||"",
+        r.demFile||"",
+        r.standard||"",
+        typeof validationTypeLabel==="function"
+          ?validationTypeLabel(r.type)
+          :(r.type||""),
+        r.included?"예":"아니오",
+        typeof sampleModeLabel==="function"
+          ?sampleModeLabel(r.sampleMode)
+          :(r.sampleMode||""),
+        excelNum(r.lat),
+        excelNum(r.lon),
+        excelNum(r.x),
+        excelNum(r.y),
+        r.row??"",
+        r.col??"",
+        excelNum(r.referenceZ),
+        excelNum(r.demZ),
+        excelNum(r.error),
+        excelNum(r.absError),
+        excelNum(r.resolution),
+        r.crs||"",
+        r.note||"",
+        excelDate(r.createdAt)
+      ]);
+    });
+
+  return [
+    {name:"하천요약",rows:summary},
+    {name:"측정결과",rows:measurementRows},
+    {name:"측정좌표",rows:measurementPointRows},
+    {name:"체크포인트",rows:checkpointRows},
+    {name:"XY단면요약",rows:xySummary},
+    {name:"XY_X",rows:xyXRows},
+    {name:"XY_Y",rows:xyYRows},
+    {name:"검증결과",rows:validationRows}
+  ];
+}
+
+function exportRiverDemAnalysisExcel(){
+  try{
+    const sheets=buildRiverDemAnalysisSheets();
+    const bytes=buildRiverDemXlsxBytes(sheets);
+
+    const riverName=currentRiverName()==="미선택"
+      ?"하천미선택"
+      :currentRiverName();
+
+    const demMeta=currentProjectDemMetadata()||pendingProjectDem;
+    const demBase=demMeta?.fileName
+      ?String(demMeta.fileName).replace(/\.[^.]+$/,"")
+      :"DEM미선택";
+
+    const fileName=
+      projectFileSafeName(`${riverName}_${demBase}_분석결과`)+".xlsx";
+
+    const blob=new Blob(
+      [bytes],
+      {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+    );
+
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download=fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+
+    updateProjectStatus(
+      `Excel 내보내기 완료\n${fileName}\n`+
+      `시트 8개 · 측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개`
+    );
+
+    log.innerText=
+      `분석 결과 Excel 내보내기 완료\n`+
+      `하천: ${currentRiverName()}\n`+
+      `파일: ${fileName}`;
+  }catch(err){
+    alert("Excel 내보내기 실패: "+err.message);
+    log.innerText="Excel 내보내기 실패: "+err.message;
+  }
+}
+
+window.exportRiverDemAnalysisExcel=exportRiverDemAnalysisExcel;
+window.buildRiverDemXlsxBytes=buildRiverDemXlsxBytes;
 
 
 function projectFileSafeName(v){
