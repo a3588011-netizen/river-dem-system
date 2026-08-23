@@ -4226,6 +4226,42 @@ async function loadRiverDemProject(event){
   }
 }
 
+
+function getProjectSavePayloadForElectron(){
+  const project=buildRiverDemProject();
+
+  const riverName=project.river?.[0]||"하천미선택";
+  const demBase=project.dem?.fileName
+    ?String(project.dem.fileName).replace(/\.[^.]+$/,"")
+    :"DEM미선택";
+
+  const fileName=
+    projectFileSafeName(`${riverName}_${demBase}`)+".riverdem";
+
+  return JSON.stringify({
+    fileName,
+    project
+  });
+}
+
+function notifyProjectSavedByElectron(filePath){
+  const fileName=String(filePath||"")
+    .split(/[\\/]/)
+    .filter(Boolean)
+    .pop()||"RiverDEM.riverdem";
+
+  currentProjectFileName=fileName;
+
+  updateProjectStatus(
+    `프로젝트 저장 완료\n${fileName}\n`+
+    `측정 ${measurements.length}개 · 체크포인트 ${checkpoints.length}개 · `+
+    `XY 단면 ${xySectionResult?"1개":"없음"}`
+  );
+}
+
+window.getProjectSavePayloadForElectron=getProjectSavePayloadForElectron;
+window.notifyProjectSavedByElectron=notifyProjectSavedByElectron;
+
 window.saveRiverDemProject=saveRiverDemProject;
 window.openRiverDemProject=openRiverDemProject;
 window.loadRiverDemProject=loadRiverDemProject;
