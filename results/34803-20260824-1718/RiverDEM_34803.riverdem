@@ -1,0 +1,149 @@
+{
+  "format": "RiverDEM Project",
+  "version": 1,
+  "savedAt": "2026-08-24T08:18:38.328Z",
+  "river": null,
+  "dem": {
+    "fileName": "34803.tif",
+    "fileSize": 255462,
+    "lastModified": 1787485575699,
+    "crs": "EPSG:5179",
+    "crsSource": "ProjectedCSTypeGeoKey",
+    "width": 263,
+    "height": 317,
+    "pixelX": 90,
+    "pixelY": -90,
+    "noData": -9999,
+    "processingMode": "normal",
+    "bounds": {
+      "minX": 1091160,
+      "maxX": 1114830,
+      "minY": 1639350,
+      "maxY": 1667880
+    }
+  },
+  "map": {
+    "center": [
+      34.855589046104974,
+      128.57529401779178
+    ],
+    "zoom": 16,
+    "baseMap": "vworld-base",
+    "coordinateSystem": "EPSG:4326"
+  },
+  "display": {
+    "demVisible": true,
+    "demOpacity": 100,
+    "heatVisible": true,
+    "heatMode": "river",
+    "heatOpacity": 60,
+    "sampleDisplayMode": "avg3",
+    "pixelGridVisible": true
+  },
+  "measurements": [],
+  "checkpoints": [],
+  "xySection": {
+    "length": 500,
+    "sampleMode": "avg3",
+    "result": null
+  },
+  "print3d": {
+    "bounds": [
+      [
+        34.85427723511631,
+        128.57331991195682
+      ],
+      [
+        34.86024624635465,
+        128.58252525329593
+      ]
+    ],
+    "widthMm": 180,
+    "baseMm": 5,
+    "zExag": 2,
+    "interpolation": "none",
+    "detail": 220,
+    "qr": {
+      "enabled": true,
+      "baseUrl": "https://a3588011-netizen.github.io/river-dem-system/results/",
+      "resultId": "34803-20260824-1718",
+      "link": "https://a3588011-netizen.github.io/river-dem-system/results/34803-20260824-1718/",
+      "plateSizeMm": 35,
+      "stickerSizeMm": 30,
+      "recessDepthMm": 0.8
+    }
+  },
+  "validation": {
+    "mode": "simulation",
+    "standard": "1",
+    "type": "ground",
+    "sampleMode": "avg3",
+    "records": [
+      {
+        "id": 1787488158791.021,
+        "mode": "real",
+        "river": "미선택",
+        "demFile": "34803.tif",
+        "standard": "other",
+        "type": "ground",
+        "included": true,
+        "sampleMode": "cell",
+        "lat": 34.84041830326899,
+        "lon": 128.58211755752566,
+        "x": 1098938.4027236619,
+        "y": 1650065.0708039936,
+        "row": 197,
+        "col": 86,
+        "referenceZ": 0,
+        "demZ": 14.116789817810059,
+        "error": 14.116789817810059,
+        "absError": 14.116789817810059,
+        "resolution": 90,
+        "note": "",
+        "createdAt": "2026-08-23T12:29:18.791Z"
+      },
+      {
+        "id": 1787495538055.3938,
+        "river": "미선택",
+        "demFile": "34803.tif",
+        "standard": "1",
+        "type": "ground",
+        "included": true,
+        "sampleMode": "cell",
+        "lat": 34.83071390101431,
+        "lon": 128.67805480957034,
+        "x": 1107723.037952101,
+        "y": 1649087.6949170046,
+        "row": 208,
+        "col": 184,
+        "referenceZ": 0,
+        "demZ": 330.35076904296875,
+        "error": 330.35076904296875,
+        "absError": 330.35076904296875,
+        "note": "",
+        "createdAt": "2026-08-23T14:32:18.055Z"
+      },
+      {
+        "id": 1787495540120.1057,
+        "river": "미선택",
+        "demFile": "34803.tif",
+        "standard": "1",
+        "type": "ground",
+        "included": true,
+        "sampleMode": "cell",
+        "lat": 34.91915597333068,
+        "lon": 128.61968994140628,
+        "x": 1102276.2128345529,
+        "y": 1658834.9030864474,
+        "row": 100,
+        "col": 123,
+        "referenceZ": 0,
+        "demZ": 9.284089088439941,
+        "error": 9.284089088439941,
+        "absError": 9.284089088439941,
+        "note": "",
+        "createdAt": "2026-08-23T14:32:20.120Z"
+      }
+    ]
+  }
+}

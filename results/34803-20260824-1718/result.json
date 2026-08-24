@@ -1,0 +1,69 @@
+{
+  "schema": "RiverDEM Result Page",
+  "version": 1,
+  "generatedAt": "2026-08-24T08:18:38.329Z",
+  "resultId": "34803-20260824-1718",
+  "resultUrl": "https://a3588011-netizen.github.io/river-dem-system/results/34803-20260824-1718/",
+  "river": {
+    "name": "미선택",
+    "region": "",
+    "basin": "",
+    "code": ""
+  },
+  "dem": {
+    "fileName": "34803.tif",
+    "fileSize": 255462,
+    "lastModified": 1787485575699,
+    "crs": "EPSG:5179",
+    "crsSource": "ProjectedCSTypeGeoKey",
+    "width": 263,
+    "height": 317,
+    "pixelX": 90,
+    "pixelY": -90,
+    "noData": -9999,
+    "processingMode": "normal",
+    "bounds": {
+      "minX": 1091160,
+      "maxX": 1114830,
+      "minY": 1639350,
+      "maxY": 1667880
+    }
+  },
+  "map": {
+    "center": [
+      34.855589046104974,
+      128.57529401779178
+    ],
+    "zoom": 16,
+    "baseMap": "vworld-base",
+    "coordinateSystem": "EPSG:4326"
+  },
+  "model": {
+    "actualWidthM": 839.9336168339838,
+    "actualHeightM": 663.7237667880019,
+    "modelWidthMm": 180,
+    "modelHeightMm": 142.23776216049953,
+    "baseMm": 5,
+    "zExag": 2,
+    "surfaceMode": "원본 DEM",
+    "cols": 11,
+    "rows": 9,
+    "triangles": 392,
+    "elevationMin": 0.90451580286026,
+    "elevationMax": 21.413053512573242
+  },
+  "counts": {
+    "measurements": 0,
+    "checkpoints": 0,
+    "validation": 3
+  },
+  "xySection": null,
+  "files": {
+    "terrain": "RiverDEM_34803_terrain.stl",
+    "qrTray": "RiverDEM_34803_QR_tray.stl",
+    "qrPng": "RiverDEM_34803_QR.png",
+    "analysis": "RiverDEM_34803_analysis.xlsx",
+    "project": "RiverDEM_34803.riverdem",
+    "resultJson": "result.json"
+  }
+}

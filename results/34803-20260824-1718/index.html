@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>미선택 · RiverDEM 결과</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;background:#f4f7fb;color:#0f172a;font-family:system-ui,-apple-system,"Segoe UI","Noto Sans KR",sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:24px}
+.hero{background:linear-gradient(135deg,#0f766e,#2563eb);color:#fff;border-radius:18px;padding:26px;box-shadow:0 14px 34px rgba(15,23,42,.15)}
+.hero h1{margin:0 0 8px;font-size:30px}
+.hero p{margin:0;opacity:.9}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px;box-shadow:0 5px 16px rgba(15,23,42,.05)}
+.card h2{margin:0 0 12px;font-size:17px}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:7px;font-size:14px}
+.kv b{color:#475569}
+.files{display:flex;flex-wrap:wrap;gap:8px}
+.files a{display:inline-block;text-decoration:none;background:#0f766e;color:#fff;border-radius:9px;padding:10px 12px;font-weight:700;font-size:13px}
+.files a.secondary{background:#475569}
+.qr{max-width:220px;width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:8px;background:#fff}
+.chart{width:100%;height:210px;border:1px solid #e2e8f0;border-radius:10px;background:#fff}
+.note{margin-top:16px;font-size:12px;color:#64748b;line-height:1.6}
+.full{grid-column:1/-1}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.kv{grid-template-columns:115px 1fr}.hero h1{font-size:24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="hero">
+    <h1>미선택</h1>
+    <p>RiverDEM 3D 지형 · 분석 결과 페이지</p>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>DEM 정보</h2>
+      <div class="kv">
+        <b>파일</b><span>34803.tif</span>
+        <b>CRS</b><span>EPSG:5179</span>
+        <b>해상도</b><span>90.00 × 90.00 m</span>
+        <b>생성 시각</b><span>2026-08-24T08:18:38.329Z</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3D 모형 정보</h2>
+      <div class="kv">
+        <b>실제 영역</b><span>839.9 × 663.7 m</span>
+        <b>모형 크기</b><span>180.0 × 142.2 mm</span>
+        <b>Z축 과장</b><span>2.00×</span>
+        <b>표면</b><span>원본 DEM</span>
+        <b>메시</b><span>11 × 9 · 392 triangles</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>분석 현황</h2>
+      <div class="kv">
+        <b>측정 결과</b><span>0개</span>
+        <b>체크포인트</b><span>0개</span>
+        <b>검증 기록</b><span>3개</span>
+        <b>X/Y 단면</b><span>없음</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>QR</h2>
+      <img class="qr" src="RiverDEM_34803_QR.png" alt="RiverDEM QR">
+      <div class="note">이 QR이 가리키는 주소: https://a3588011-netizen.github.io/river-dem-system/results/34803-20260824-1718/</div>
+    </section>
+
+    <section class="card full">
+      <h2>다운로드</h2>
+      <div class="files">
+        <a href="RiverDEM_34803_analysis.xlsx" download>분석 Excel</a>
+        <a href="RiverDEM_34803.riverdem" download>RiverDEM 프로젝트</a>
+        <a class="secondary" href="RiverDEM_34803_terrain.stl" download>지형 STL</a>
+        <a class="secondary" href="RiverDEM_34803_QR_tray.stl" download>QR 트레이 STL</a>
+        <a class="secondary" href="result.json" download>결과 JSON</a>
+      </div>
+    </section>
+
+    <section class="card full">
+      <h2>X/Y 단면 그래프</h2>
+      <canvas id="xChart" class="chart"></canvas>
+      <div style="height:12px"></div>
+      <canvas id="yChart" class="chart"></canvas>
+    </section>
+  </div>
+
+  <div class="note">
+    3D 출력용 Bilinear 보간은 표면을 부드럽게 만드는 시각적 재표본화이며 원본 DEM의 실제 공간 정확도를 향상시키지 않습니다.
+  </div>
+</div>
+
+<script>
+const RESULT={"schema":"RiverDEM Result Page","version":1,"generatedAt":"2026-08-24T08:18:38.329Z","resultId":"34803-20260824-1718","resultUrl":"https://a3588011-netizen.github.io/river-dem-system/results/34803-20260824-1718/","river":{"name":"미선택","region":"","basin":"","code":""},"dem":{"fileName":"34803.tif","fileSize":255462,"lastModified":1787485575699,"crs":"EPSG:5179","crsSource":"ProjectedCSTypeGeoKey","width":263,"height":317,"pixelX":90,"pixelY":-90,"noData":-9999,"processingMode":"normal","bounds":{"minX":1091160,"maxX":1114830,"minY":1639350,"maxY":1667880}},"map":{"center":[34.855589046104974,128.57529401779178],"zoom":16,"baseMap":"vworld-base","coordinateSystem":"EPSG:4326"},"model":{"actualWidthM":839.9336168339838,"actualHeightM":663.7237667880019,"modelWidthMm":180,"modelHeightMm":142.23776216049953,"baseMm":5,"zExag":2,"surfaceMode":"원본 DEM","cols":11,"rows":9,"triangles":392,"elevationMin":0.90451580286026,"elevationMax":21.413053512573242},"counts":{"measurements":0,"checkpoints":0,"validation":3},"xySection":null,"files":{"terrain":"RiverDEM_34803_terrain.stl","qrTray":"RiverDEM_34803_QR_tray.stl","qrPng":"RiverDEM_34803_QR.png","analysis":"RiverDEM_34803_analysis.xlsx","project":"RiverDEM_34803.riverdem","resultJson":"result.json"}};
+
+function drawProfile(canvasId,rows,label){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas)return;
+
+  const data=(Array.isArray(rows)?rows:[])
+    .filter(r=>Number.isFinite(Number(r.offset))&&Number.isFinite(Number(r.z)))
+    .map(r=>({x:Number(r.offset),y:Number(r.z)}));
+
+  const rect=canvas.getBoundingClientRect();
+  const w=Math.max(320,Math.round(rect.width||900));
+  const h=210;
+  const dpr=Math.max(1,window.devicePixelRatio||1);
+
+  canvas.width=w*dpr;
+  canvas.height=h*dpr;
+
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  ctx.fillStyle="#fff";
+  ctx.fillRect(0,0,w,h);
+
+  ctx.fillStyle="#334155";
+  ctx.font="12px sans-serif";
+  ctx.fillText(label,12,18);
+
+  if(data.length<2){
+    ctx.fillStyle="#94a3b8";
+    ctx.fillText("단면 데이터가 없습니다.",12,45);
+    return;
+  }
+
+  const left=48,right=16,top=30,bottom=32;
+  const pw=w-left-right;
+  const ph=h-top-bottom;
+
+  let minX=Math.min(...data.map(v=>v.x));
+  let maxX=Math.max(...data.map(v=>v.x));
+  let minY=Math.min(...data.map(v=>v.y));
+  let maxY=Math.max(...data.map(v=>v.y));
+
+  if(maxX===minX)maxX=minX+1;
+  if(maxY===minY){maxY+=.5;minY-=.5}
+
+  const pad=(maxY-minY)*.08;
+  minY-=pad;
+  maxY+=pad;
+
+  const sx=x=>left+(x-minX)/(maxX-minX)*pw;
+  const sy=y=>top+(maxY-y)/(maxY-minY)*ph;
+
+  ctx.strokeStyle="#cbd5e1";
+  ctx.strokeRect(left,top,pw,ph);
+
+  ctx.strokeStyle="#0f766e";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+
+  data.forEach((p,i)=>{
+    const x=sx(p.x),y=sy(p.y);
+    if(i===0)ctx.moveTo(x,y);
+    else ctx.lineTo(x,y);
+  });
+
+  ctx.stroke();
+
+  ctx.fillStyle="#64748b";
+  ctx.font="11px sans-serif";
+  ctx.fillText(minX.toFixed(0)+" m",left,h-9);
+  ctx.fillText(maxX.toFixed(0)+" m",w-right-42,h-9);
+  ctx.fillText(maxY.toFixed(2)+" m",4,top+5);
+  ctx.fillText(minY.toFixed(2)+" m",4,top+ph);
+}
+
+drawProfile("xChart",RESULT.xySection?.xRows,"X 횡단면");
+drawProfile("yChart",RESULT.xySection?.yRows,"Y 종단면");
+</script>
+</body>
+</html>
